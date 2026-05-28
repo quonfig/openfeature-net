@@ -1,0 +1,35 @@
+<Project>
+
+  <PropertyGroup Label="Versioning">
+    <!-- Single source of truth; the release workflow asserts the git tag matches this. -->
+    <Version>0.0.1</Version>
+  </PropertyGroup>
+
+  <PropertyGroup Label="LanguageAndNullability">
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1701</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Label="DeterministicAndReproducible">
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup Label="PackageMetadata">
+    <Authors>Quonfig</Authors>
+    <Company>Quonfig</Company>
+    <Copyright>Copyright (c) Quonfig</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://quonfig.com</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/quonfig/openfeature-net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Quonfig.OpenFeature.ServerProvider</RootNamespace>
+    <AssemblyName>Quonfig.OpenFeature.ServerProvider</AssemblyName>
+    <PackageId>Quonfig.OpenFeature.ServerProvider</PackageId>
+    <Title>Quonfig OpenFeature Provider (server)</Title>
+    <Description>Official OpenFeature provider for Quonfig — wraps the Quonfig.Sdk .NET SDK. Maps OpenFeature evaluations onto Quonfig's typed getters with full reason / variant / error-code / metadata fidelity, and emits provider lifecycle events.</Description>
+    <PackageTags>quonfig;openfeature;feature-flags;configuration;feature-management</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Quonfig.OpenFeature.ServerProvider.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenFeature" Version="2.13.0" />
+    <PackageReference Include="Quonfig.Sdk" Version="0.0.1" />
+  </ItemGroup>
+
+</Project>
