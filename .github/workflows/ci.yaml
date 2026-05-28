@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout openfeature-net
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          path: openfeature-net
+
+      - name: Checkout integration-test-data
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          # Pinned to a tag (not main) so a typo in shared YAML can't break
+          # every SDK's CI at once. Checked out as a sibling of openfeature-net;
+          # the tests walk up from the test source dir to find it.
+          repository: quonfig/integration-test-data
+          path: integration-test-data
+          ref: v2026.05.20
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@3e891b0cb619bf60e2c25674b222b8940e2c1c25  # v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        working-directory: openfeature-net
+        run: dotnet restore
+
+      - name: Build
+        working-directory: openfeature-net
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        working-directory: openfeature-net
+        run: dotnet test --configuration Release --no-build
