@@ -281,21 +281,30 @@ public sealed class QuonfigProviderTests
         detail.Value.Should().BeTrue();
     }
 
-    /// <summary>Walks up from this source file's directory to find the shared integration-test-data fixtures.</summary>
-    private static string IntegrationTestDataDir([System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
+    /// <summary>Walks up from the test runtime directory to find the shared integration-test-data fixtures.
+    /// Uses <see cref="System.AppContext.BaseDirectory"/> (the bin output dir) rather than [CallerFilePath]:
+    /// under deterministic CI builds (CI=true) the compiler rewrites source paths to "/_/...", which makes a
+    /// CallerFilePath walk-up fail. Mirrors sdk-net's LocateCorpus.</summary>
+    private static string IntegrationTestDataDir()
     {
-        var dir = Path.GetDirectoryName(thisFile);
-        while (dir is not null)
+        var dir = System.AppContext.BaseDirectory;
+        for (int i = 0; i < 12; i++)
         {
-            var candidate = Path.Combine(dir, "integration-test-data", "data", "integration-tests");
+            var candidate = Path.GetFullPath(Path.Combine(dir, "integration-test-data", "data", "integration-tests"));
             if (Directory.Exists(candidate))
             {
                 return candidate;
             }
 
-            dir = Path.GetDirectoryName(dir);
+            var parent = Path.GetDirectoryName(dir);
+            if (parent is null || parent == dir)
+            {
+                break;
+            }
+
+            dir = parent;
         }
 
-        throw new DirectoryNotFoundException("could not locate integration-test-data/data/integration-tests");
+        throw new DirectoryNotFoundException("could not locate integration-test-data/data/integration-tests by walking up from " + System.AppContext.BaseDirectory);
     }
 }
