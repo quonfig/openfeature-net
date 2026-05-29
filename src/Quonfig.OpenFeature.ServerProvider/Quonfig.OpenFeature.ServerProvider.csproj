@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <PackageReference Include="OpenFeature" Version="2.13.0" />
-    <PackageReference Include="Quonfig.Sdk" Version="0.0.1" />
+    <PackageReference Include="Quonfig.Sdk" Version="0.0.2" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.2 - 2026-05-29
+
+- Bump the bundled `Quonfig.Sdk` dependency from 0.0.1 to 0.0.2 (qfg-z3xp).
+  The 0.0.1 SDK predated the delivery-mode per-environment override fix
+  (sdk-net 0.0.2, qfg-64m9/qfg-pinh), so in SDK-key/HTTP mode the provider
+  resolved the wire payload's base `default` block and silently ignored the
+  singular per-`environment` override. 0.0.2 parses the singular `environment`
+  block and evaluates against the authoritative `meta.environment`. No provider
+  code change — the fix rides in via the SDK bump.
+
 ## 0.0.1 - 2026-05-28
 
 - Initial release of the Quonfig OpenFeature provider for .NET (qfg-3e6d).

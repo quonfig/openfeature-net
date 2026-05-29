@@ -127,9 +127,10 @@ public sealed class QuonfigProviderTests
 
         detail.Value.Should().BeTrue();
         detail.ErrorType.Should().Be(ErrorType.None);
-        // sdk-net (like sdk-java, unlike sdk-go) reports an ALWAYS_TRUE-only rule match as
-        // TARGETING_MATCH. The provider passes the SDK reason through verbatim.
-        detail.Reason.Should().Be(Reason.TargetingMatch);
+        // An unconditional (ALWAYS_TRUE / no-criteria) rule match is STATIC under the
+        // canonical reason semantics sdk-net adopted in 0.0.2 (qfg-q7yz). The provider
+        // passes the SDK reason through verbatim.
+        detail.Reason.Should().Be(Reason.Static);
     }
 
     [Fact]
@@ -139,7 +140,8 @@ public sealed class QuonfigProviderTests
         var detail = await provider.ResolveStringValueAsync("brand.new.string", "default");
 
         detail.Value.Should().Be("hello.world");
-        detail.Reason.Should().Be(Reason.TargetingMatch);
+        // Unconditional rule -> STATIC under canonical 0.0.2 reason semantics (qfg-q7yz).
+        detail.Reason.Should().Be(Reason.Static);
     }
 
     [Fact]
