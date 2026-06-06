@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0 - 2026-06-06
+
+- **Stable 1.0.0 release.** The Quonfig OpenFeature provider for .NET is now declared
+  stable and references `Quonfig.Sdk` 1.0.0. No API or behavior changes from 0.0.3 —
+  this is a coordinated 1.0.0 version stamp across the entire Quonfig SDK family.
+
 ## 0.0.3 - 2026-06-02
 
 - Bump the `Quonfig.Sdk` dependency from `0.0.2` to `0.0.3` to inherit dev-context injection default-on (qfg-bw7g.9, via qfg-bw7g.7). No change to this provider's behavior — dev-context lives below the OpenFeature layer, so OpenFeature users now get `quonfig-user.email` injection by default in local dev (gated on the `qfg login` token file; inert in production).
