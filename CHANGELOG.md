@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0 - 2026-07-08
+
+- Bump the `Quonfig.Sdk` dependency from `1.1.0` to `1.2.0` to inherit its
+  telemetry and configuration work: runtime telemetry is now actually emitted by
+  the live client (previously sdk-net constructed no `TelemetryReporter`, so it
+  sent zero runtime telemetry — qfg-gxm6), `QUONFIG_BACKEND_SDK_KEY` /
+  `QUONFIG_ENVIRONMENT` env-var fallbacks (qfg-2qcq.1), `QUONFIG_DOMAIN`-derived
+  API/stream/telemetry URLs with the SSE stream following `ApiUrls`
+  (qfg-41nh.27), and the additive `failover` telemetry event (qfg-41nh.18). All
+  additive and backward-compatible with no new dependencies. No change to this
+  provider's own public API — the behavior rides in via the SDK bump. Coordinated
+  1.2.0 version stamp across the Quonfig SDK family.
+
 ## 1.1.0 - 2026-07-01
 
 - Bump the `Quonfig.Sdk` dependency from `1.0.0` to `1.1.0` to inherit the
