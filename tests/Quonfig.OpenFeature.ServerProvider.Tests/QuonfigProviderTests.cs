@@ -197,18 +197,25 @@ public sealed class QuonfigProviderTests
     }
 
     [Fact]
-    public async Task Integration_WeightedValue_ResolvesNonDefault()
+    public async Task Integration_WeightedValue_Bucket0_ReportsSplit()
     {
+        // Mirrors integration-test-data tests/openfeature/openfeature.yaml Case 5:
+        // of.weighted + targetingKey "user-123" (targetingKeyMapping user.id, the default)
+        // lands in weighted bucket 0 -> variant-a. A 0-based bucket index must still be
+        // reported as SPLIT (qfg-stbb), with the bucket index carried in variant + metadata.
         var provider = NewDatadirProvider();
 
         var detail = await provider.ResolveStringValueAsync(
             "of.weighted",
-            "default",
-            EvaluationContext.Builder().Set("targetingKey", new Value("92a202f2")).Build());
+            "variant-b",
+            EvaluationContext.Builder().SetTargetingKey("user-123").Build());
 
-        // The weighted config resolves to a real value (not the caller default) and carries no error.
-        detail.Value.Should().NotBe("default");
+        detail.Value.Should().Be("variant-a");
         detail.ErrorType.Should().Be(ErrorType.None);
+        detail.Reason.Should().Be(Reason.Split);
+        detail.Variant.Should().Be("split:0");
+        detail.FlagMetadata.Should().NotBeNull();
+        detail.FlagMetadata!.GetInt("weightedValueIndex").Should().Be(0);
     }
 
     // ---- Mapping unit tests (deterministic; cover every arm including SPLIT/ERROR) ----
