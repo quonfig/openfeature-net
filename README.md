@@ -95,8 +95,9 @@ Errors never throw — they return the caller's default with an `ErrorType` set:
 other Quonfig OpenFeature providers).
 
 > Note: a flag whose only rule is an unconditional match (`ALWAYS_TRUE`) resolves
-> with reason `TARGETING_MATCH` in `Quonfig.Sdk` (consistent with the Java SDK).
-> The provider passes the SDK's reason through verbatim.
+> with reason `STATIC` (the canonical reason semantics `Quonfig.Sdk` adopted in
+> 0.0.2, consistent with the other Quonfig SDKs). The provider passes the SDK's
+> reason through verbatim.
 
 ## Provider events
 
@@ -111,8 +112,8 @@ The provider emits:
 
 ## Native SDK escape hatch
 
-For features not covered by OpenFeature (duration / long / bytes values, log
-levels, raw key access), reach the underlying client:
+For features not covered by OpenFeature (parsed `TimeSpan` durations, long /
+bytes values, log levels, raw key access), reach the underlying client:
 
 ```csharp
 var native = provider.GetClient();
@@ -130,7 +131,7 @@ TimeSpan? ttl = native?.GetDuration("cache.ttl");
 | `string_list` | `GetObjectValueAsync`   | Returns a `Value` list         |
 | `json`        | `GetObjectValueAsync`   | Returns a parsed `Value`       |
 | `long`        | N/A                     | Use the native client          |
-| `duration`    | N/A                     | Use the native client          |
+| `duration`    | `GetStringValueAsync`   | ISO 8601 string (`"PT1M30S"`)  |
 | `log_level`   | N/A                     | Native SDK only                |
 
 `GetObjectValueAsync` resolves `string_list` first, then falls back to a parsed
