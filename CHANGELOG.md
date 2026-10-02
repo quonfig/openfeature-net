@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 - 2026-10-02
+
+- Fix: resolving a structure flag that does not exist now returns the default
+  with `ErrorType.FlagNotFound` instead of throwing. `ResolveStructureValueAsync`
+  calls `GetStringListDetails` / `GetJsonDetails` with no default, and in
+  `Quonfig.Sdk` 1.2.0 those threw `QuonfigKeyNotFoundException` under the default
+  `OnNoDefault.Throw`. Bumps the `Quonfig.Sdk` dependency from `1.2.0` to `1.5.0`,
+  where `Get*Details` never throw (qfg-2agi.12). No change to this provider's own
+  public API.
+
 ## 1.2.0 - 2026-07-08
 
 - Bump the `Quonfig.Sdk` dependency from `1.1.0` to `1.2.0` to inherit its

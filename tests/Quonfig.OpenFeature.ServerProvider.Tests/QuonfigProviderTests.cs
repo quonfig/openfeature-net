@@ -165,6 +165,18 @@ public sealed class QuonfigProviderTests
     }
 
     [Fact]
+    public async Task Integration_UnknownStructureFlag_ReturnsDefault_WithFlagNotFound()
+    {
+        // Structure resolution calls GetStringListDetails / GetJsonDetails with no
+        // default; under the SDK's default OnNoDefault.Throw those must not throw.
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveStructureValueAsync("this-flag-does-not-exist", new Value("fallback"));
+
+        detail.Value.AsString.Should().Be("fallback");
+        detail.ErrorType.Should().Be(ErrorType.FlagNotFound);
+    }
+
+    [Fact]
     public async Task Integration_DotNotationContext()
     {
         var provider = NewDatadirProvider();
