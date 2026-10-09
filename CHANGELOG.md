@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 - 2026-10-09
+
+- Bump the `Quonfig.Sdk` dependency from `1.5.0` to `1.6.0` to inherit the SDK
+  quality program's Wave 0/1 fixes: bounded JSON telemetry counters, env-scoped
+  `decryptWith` key evaluation, idle poller no longer busy-waits, copy-on-return
+  getters and a regex match timeout (qfg-goi1.2.2, qfg-goi1.2.14, qfg-goi1.2.15,
+  qfg-goi1.1.5, qfg-goi1.2.23, qfg-goi1.2.43). No change to this provider's own
+  public API.
+
 ## 1.2.1 - 2026-10-02
 
 - Fix: resolving a structure flag that does not exist now returns the default
