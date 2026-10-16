@@ -83,25 +83,25 @@ internal static class Mappings
             case double d:
                 return new Value(d);
             case IReadOnlyDictionary<string, object?> map:
-            {
-                var builder = Structure.Builder();
-                foreach (var kv in map)
                 {
-                    builder.Set(kv.Key, ToValue(kv.Value));
-                }
+                    var builder = Structure.Builder();
+                    foreach (var kv in map)
+                    {
+                        builder.Set(kv.Key, ToValue(kv.Value));
+                    }
 
-                return new Value(builder.Build());
-            }
+                    return new Value(builder.Build());
+                }
             case IEnumerable<object?> list:
-            {
-                var values = new List<Value>();
-                foreach (var item in list)
                 {
-                    values.Add(ToValue(item));
-                }
+                    var values = new List<Value>();
+                    foreach (var item in list)
+                    {
+                        values.Add(ToValue(item));
+                    }
 
-                return new Value(values);
-            }
+                    return new Value(values);
+                }
             default:
                 return new Value(json.ToString() ?? string.Empty);
         }
