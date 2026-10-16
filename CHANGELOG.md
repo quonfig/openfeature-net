@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.4.0 - 2026-10-16
+
+- Bump the `Quonfig.Sdk` dependency from `1.6.0` to `1.7.0`. No change to this
+  provider's own public API, but `Quonfig.Sdk` 1.7.0 changes behavior that
+  OpenFeature users see through this provider, so this is a minor release:
+  - **UPGRADE: rule operators follow the canonical cross-SDK semantics
+    (qfg-goi1.5.5).** Pass dates in the evaluation context as epoch
+    milliseconds (a number or an all-digit string) or ISO 8601 / RFC3339 with
+    `Z` or a numeric offset. Three rules change who matches: a `bool` context
+    value now reads `"true"` / `"false"` for string operators such as
+    `PROP_IS_ONE_OF` (a `["True"]` workaround list stops matching; make it
+    lowercase), `PROP_SEMVER_*` accepts abbreviated versions such as `"4.1"`,
+    and `PROP_BEFORE` / `PROP_AFTER` no longer parse date-only, offset-less or
+    free-form date strings, so those criteria stop matching. Whole-number
+    `double` / `decimal` values read as plain digits (`1.0` -> `"1"`).
+  - **UPGRADE: a rejected SDK key slows down instead of polling at the normal
+    cadence (qfg-goi1.10.28).** After a fetch cycle where the primary answered
+    401, 403, 404 or 410 and no leg returned 200/304, the SDK stops SSE and the
+    60 s poller and sends one probe every 150-300 s until the key works again.
+    It logs one `Error` on entry (status and host, never the key) instead of
+    failing silently.
+  - **Fixed: an SSE peer that accepts the connection but never sends response
+    headers no longer wedges streaming forever (qfg-goi1.2.37).** Each connect
+    now waits at most 90 s for headers, then reconnects with backoff, so
+    `ProviderConfigurationChanged` events resume after a hung proxy or load
+    balancer.
+  - Docs: the SDK README describes the default `quonfig-user.email` dev-context
+    injection and how to turn it off (qfg-goi1.2.41).
+
 ## 1.3.0 - 2026-10-09
 
 - Bump the `Quonfig.Sdk` dependency from `1.5.0` to `1.6.0` to inherit the SDK
