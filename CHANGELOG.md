@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.5.0 - 2026-10-20
+
+- Bump the `Quonfig.Sdk` dependency from `1.7.0` to `1.8.0`. No change to this
+  provider's own public API, but `Quonfig.Sdk` 1.8.0 changes connection timing
+  that you can see through this provider, so this is a minor release:
+  - **UPGRADE: the stream counts as connected at its first frame, not at the
+    200 response (qfg-goi1.10.41, qfg-goi1.10.9).** The SDK's connection state
+    (`GetClient().ConnectionState` and `OnConnectionStateChange`), the
+    reconnect backoff and the fallback poller now treat a stream as connected
+    only once it delivers a config envelope or a keepalive. Against Quonfig's
+    servers the two arrive together, so you should see no difference. Behind a
+    proxy that sends 200 headers early, `Connected` is reported up to one
+    keepalive interval (30 s) later. A stream that closes before any frame is
+    now a failed attempt: the reconnect delay grows and the fallback poller
+    takes over after its usual 120 s threshold, so `ProviderConfigurationChanged`
+    events keep flowing from polled config instead of the provider sitting on
+    stale config behind a reconnect loop.
+  - **Fixed: the stream reconnect backoff caps at 30 s, jitter included
+    (qfg-n3nr).** It capped at 60 s with +/-20% jitter, so after a long stream
+    outage the next reconnect could land up to 72 s after the server came back.
+  - **Fixed: `GetClient().ConnectionState` no longer reads `Connected` right
+    after initialization, before any stream exists.** In HTTP mode with a
+    stream configured it now reads `Initializing` until the stream delivers its
+    first frame. Datadir and datafile modes still read `Connected` once config
+    is installed. `ProviderReady` timing is unchanged: it still fires when the
+    initial config is installed.
+
 ## 1.4.0 - 2026-10-16
 
 - Bump the `Quonfig.Sdk` dependency from `1.6.0` to `1.7.0`. No change to this
