@@ -33,3 +33,11 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Runtime dependencies of the published package. A NuGet version is a
+      # minimum floor, so a major bump here forces every customer onto that
+      # major. Raise these floors deliberately in a release, not via Dependabot.
+      - dependency-name: "OpenFeature"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Quonfig.Sdk"
+        update-types: ["version-update:semver-major"]
