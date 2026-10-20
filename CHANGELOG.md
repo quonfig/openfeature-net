@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1 - 2026-10-20
+
+- Bump the `Quonfig.Sdk` dependency from `1.8.0` to `1.8.1`. `Quonfig.Sdk`
+  1.7.0 and 1.8.0 required `System.Collections.Immutable >= 10.0.12` (an
+  unintended Dependabot bump), so this provider 1.4.0 and 1.5.0 forced that
+  package onto every consumer too. 1.8.1 lowers the requirement back to
+  `8.0.0`. No change to this provider's API or behavior.
+
 ## 1.5.0 - 2026-10-20
 
 - Bump the `Quonfig.Sdk` dependency from `1.7.0` to `1.8.0`. No change to this
