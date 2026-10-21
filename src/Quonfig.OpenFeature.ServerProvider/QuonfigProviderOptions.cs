@@ -20,6 +20,22 @@ public sealed class QuonfigProviderOptions
     public string? Environment { get; set; }
 
     /// <summary>
+    /// What the wrapped client does when no config arrives within <see cref="InitTimeout"/>. Passed to
+    /// <see cref="QuonfigOptions.OnInitFailure"/>; <c>null</c> keeps the SDK default (<see cref="OnInitFailure.Fail"/>).
+    /// Provider status per mode: <c>Fail</c> -> <c>InitializeAsync</c> throws and the status is ERROR;
+    /// <c>Wait</c> -> NOT_READY until the first config, then READY; <c>Continue</c> -> <c>InitializeAsync</c>
+    /// returns, then <c>PROVIDER_ERROR</c> (non-fatal) while serving code defaults. In every mode the
+    /// provider keeps the client alive and emits <c>PROVIDER_READY</c> once it heals.
+    /// </summary>
+    public OnInitFailure? OnInitFailure { get; set; }
+
+    /// <summary>
+    /// How long the wrapped client retries before applying <see cref="OnInitFailure"/>. Passed to
+    /// <see cref="QuonfigOptions.InitTimeout"/>; <c>null</c> keeps the SDK default (10 s).
+    /// </summary>
+    public TimeSpan? InitTimeout { get; set; }
+
+    /// <summary>
     /// How the OpenFeature <c>targetingKey</c> maps to a Quonfig context property. Dot-notation:
     /// <c>"user.id"</c> means namespace <c>"user"</c>, property <c>"id"</c>. Defaults to <c>"user.id"</c>.
     /// </summary>

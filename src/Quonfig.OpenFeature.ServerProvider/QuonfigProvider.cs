@@ -18,17 +18,25 @@ namespace Quonfig.OpenFeature.ServerProvider;
 /// </summary>
 /// <remarks>
 /// Emits <c>PROVIDER_READY</c> after a successful <see cref="InitializeAsync"/>, <c>PROVIDER_ERROR</c>
-/// if initialization fails, and <c>PROVIDER_CONFIGURATION_CHANGED</c> on every post-ready config
-/// refresh (SSE / fallback / datadir watcher). <c>PROVIDER_STALE</c> is deferred to a follow-up.
+/// if initialization fails (or, non-fatal, when <see cref="OnInitFailure.Continue"/> started without
+/// config), <c>PROVIDER_READY</c> again when such a client heals, and <c>PROVIDER_CONFIGURATION_CHANGED</c>
+/// on every post-ready config refresh (SSE / fallback / datadir watcher). The server SDK keeps no config
+/// cache, so the provider never reports <c>PROVIDER_STALE</c>.
 /// </remarks>
 public sealed class QuonfigProvider : FeatureProvider
 {
     private const string ProviderName = "quonfig";
 
+    /// <summary>Delay before the non-fatal PROVIDER_ERROR under OnInitFailure.Continue (see <see cref="WatchForHeal"/>).</summary>
+    private static readonly TimeSpan ContinueErrorDelay = TimeSpan.FromMilliseconds(100);
+
     private readonly QuonfigProviderOptions _options;
     private readonly string _targetingKeyMapping;
+    private readonly CancellationTokenSource _shutdown = new();
     private IQuonfig? _client;
     private int _ready;
+    private int _subscribed;
+    private int _watching;
 
     /// <summary>Creates a provider that builds and owns its own Quonfig client from <paramref name="options"/>.</summary>
     public QuonfigProvider(QuonfigProviderOptions options)
@@ -52,40 +60,57 @@ public sealed class QuonfigProvider : FeatureProvider
 
     /// <summary>
     /// The underlying Quonfig client for native-only features (duration / long / bytes values,
-    /// log levels, raw key access). <c>null</c> until <see cref="InitializeAsync"/> has run.
+    /// log levels, raw key access). <c>null</c> until <see cref="InitializeAsync"/> has run. After a failed
+    /// initialization it is the kept client, still retrying in the background.
     /// </summary>
     public IQuonfig? GetClient() => _client;
 
     /// <inheritdoc/>
     public override async Task InitializeAsync(EvaluationContext context, CancellationToken cancellationToken = default)
     {
-        if (_client is null)
+        var client = _client;
+        try
         {
-            var quonfigOptions = BuildQuonfigOptions();
-            try
+            if (client is null)
             {
-                var client = new QuonfigClient(quonfigOptions);
-                // Subscribe before InitAsync so an HTTP-mode initial install is observed; the _ready
-                // guard suppresses that spurious pre-ready config-change (matches openfeature-go).
-                client.OnConfigChange += HandleConfigChange;
-                await client.InitAsync(cancellationToken).ConfigureAwait(false);
+                client = new QuonfigClient(BuildQuonfigOptions());
+                // Keep the client even if InitAsync throws: a client that survives a caught
+                // OnInitFailure.Fail keeps retrying and heals (init-failure design B.5).
                 _client = client;
             }
-            catch (Exception ex)
+
+            // Subscribe before InitAsync so an HTTP-mode initial install is observed; the _ready
+            // guard suppresses that spurious pre-ready config-change (matches openfeature-go).
+            if (Interlocked.Exchange(ref _subscribed, 1) == 0)
             {
-                await EmitAsync(new ProviderEventPayload
-                {
-                    ProviderName = ProviderName,
-                    Type = OFConst.ProviderEventTypes.ProviderError,
-                    ErrorType = OFConst.ErrorType.General,
-                    Message = ex.Message,
-                }).ConfigureAwait(false);
-                throw;
+                client.OnConfigChange += HandleConfigChange;
             }
+
+            await client.InitAsync(cancellationToken).ConfigureAwait(false);
         }
-        else
+        catch (Exception ex)
         {
-            _client.OnConfigChange += HandleConfigChange;
+            await EmitAsync(new ProviderEventPayload
+            {
+                ProviderName = ProviderName,
+                Type = OFConst.ProviderEventTypes.ProviderError,
+                ErrorType = OFConst.ErrorType.General,
+                Message = ex.Message,
+            }).ConfigureAwait(false);
+            if (client is not null)
+            {
+                WatchForHeal(client, deferredError: null);
+            }
+
+            throw;
+        }
+
+        if (!IsClientReady(client))
+        {
+            // OnInitFailure.Continue with no config: InitAsync returned but every evaluation is a code
+            // default. Report ERROR (non-fatal) rather than READY, then READY once the client heals.
+            WatchForHeal(client, deferredError: "Quonfig initialization continued without config; serving code defaults until delivery is reachable");
+            return;
         }
 
         Interlocked.Exchange(ref _ready, 1);
@@ -100,6 +125,7 @@ public sealed class QuonfigProvider : FeatureProvider
     public override async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
         Interlocked.Exchange(ref _ready, 0);
+        _shutdown.Cancel();
         var client = _client;
         if (client is not null)
         {
@@ -112,7 +138,7 @@ public sealed class QuonfigProvider : FeatureProvider
         string flagKey, bool defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
     {
         var client = _client;
-        if (client is null)
+        if (client is null || !IsClientReady(client))
         {
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
@@ -127,7 +153,7 @@ public sealed class QuonfigProvider : FeatureProvider
         string flagKey, string defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
     {
         var client = _client;
-        if (client is null)
+        if (client is null || !IsClientReady(client))
         {
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
@@ -142,7 +168,7 @@ public sealed class QuonfigProvider : FeatureProvider
         string flagKey, int defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
     {
         var client = _client;
-        if (client is null)
+        if (client is null || !IsClientReady(client))
         {
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
@@ -157,7 +183,7 @@ public sealed class QuonfigProvider : FeatureProvider
         string flagKey, double defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
     {
         var client = _client;
-        if (client is null)
+        if (client is null || !IsClientReady(client))
         {
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
@@ -173,7 +199,7 @@ public sealed class QuonfigProvider : FeatureProvider
         string flagKey, Value defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
     {
         var client = _client;
-        if (client is null)
+        if (client is null || !IsClientReady(client))
         {
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
@@ -225,6 +251,63 @@ public sealed class QuonfigProvider : FeatureProvider
             "default",
             "provider not initialized");
 
+    /// <summary>
+    /// True once the client holds a config from Quonfig. Only the concrete SDK client exposes readiness
+    /// (it is not on <see cref="IQuonfig"/>), so any other implementation counts as ready.
+    /// </summary>
+    private static bool IsClientReady(IQuonfig client) => client is not QuonfigClient q || q.IsReady;
+
+    /// <summary>
+    /// Background watch for a client that is not ready after <see cref="InitializeAsync"/>: optionally emits
+    /// a non-fatal <c>PROVIDER_ERROR</c>, then emits <c>PROVIDER_READY</c> when the client heals.
+    /// </summary>
+    private void WatchForHeal(IQuonfig client, string? deferredError)
+    {
+        // One watch per provider: a repeated InitializeAsync joins the client's retry and must not emit twice.
+        if (client is not QuonfigClient q || Interlocked.Exchange(ref _watching, 1) == 1)
+        {
+            return;
+        }
+
+        var token = _shutdown.Token;
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    if (deferredError is not null)
+                    {
+                        // The OF SDK sets READY right after InitializeAsync returns. Give that a moment
+                        // so this ERROR lands after it instead of being overwritten.
+                        await Task.Delay(ContinueErrorDelay, token).ConfigureAwait(false);
+                        if (!q.IsReady)
+                        {
+                            await EmitAsync(new ProviderEventPayload
+                            {
+                                ProviderName = ProviderName,
+                                Type = OFConst.ProviderEventTypes.ProviderError,
+                                ErrorType = OFConst.ErrorType.ProviderNotReady,
+                                Message = deferredError,
+                            }).ConfigureAwait(false);
+                        }
+                    }
+
+                    await q.WaitForReadyAsync(token).ConfigureAwait(false);
+                    Interlocked.Exchange(ref _ready, 1);
+                    await EmitAsync(new ProviderEventPayload
+                    {
+                        ProviderName = ProviderName,
+                        Type = OFConst.ProviderEventTypes.ProviderReady,
+                    }).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Provider shut down before the client healed.
+                }
+            },
+            CancellationToken.None);
+    }
+
     private void HandleConfigChange()
     {
         if (Volatile.Read(ref _ready) == 0)
@@ -260,6 +343,16 @@ public sealed class QuonfigProvider : FeatureProvider
         if (!string.IsNullOrEmpty(_options.Environment))
         {
             quonfigOptions.Environment = _options.Environment;
+        }
+
+        if (_options.OnInitFailure is { } onInitFailure)
+        {
+            quonfigOptions.OnInitFailure = onInitFailure;
+        }
+
+        if (_options.InitTimeout is { } initTimeout)
+        {
+            quonfigOptions.InitTimeout = initTimeout;
         }
 
         _options.ConfigureClient?.Invoke(quonfigOptions);
