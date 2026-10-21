@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+- **Changed: bump `Quonfig.Sdk` from `1.8.1` to `1.9.0` and map its init-failure
+  modes onto provider status (qfg-9p4i.12).** Spec:
+  `project/plans/2026-10-05-init-failure-design.md` B.5. **UPGRADE: when
+  delivery is unreachable at startup, `InitializeAsync` now retries for
+  `InitTimeout` (10 s by default) before it fails, instead of failing within
+  milliseconds.** A healthy start is unchanged.
+  - **New options `QuonfigProviderOptions.OnInitFailure` and `InitTimeout`.**
+    They pass through to the wrapped client. `null` (the default) keeps the SDK
+    defaults (`Fail`, 10 s). Setting them through `ConfigureClient` still works.
+  - **`Fail` (default): the provider keeps the client.** `InitializeAsync`
+    still throws (now `QuonfigInitException`) and the status is `ERROR`. Before,
+    the provider dropped the client, so it stayed in `ERROR` forever. Now the
+    kept client keeps retrying, and when delivery comes back the provider emits
+    `PROVIDER_READY` and the status becomes `READY`. `GetClient()` returns that
+    client after a failed init.
+  - **`Continue` reports `ERROR`, not `READY`.** `InitializeAsync` returns, then
+    the provider emits a non-fatal `PROVIDER_ERROR`, since every evaluation is a
+    code default. It emits `PROVIDER_READY` when the client heals.
+  - **`Wait`:** `InitializeAsync` blocks until the first config, so the status is
+    `NOT_READY` until then, then `READY`.
+  - **Not-ready evaluations return `PROVIDER_NOT_READY`.** While the client has
+    no config, every evaluation returns your default with error type
+    `PROVIDER_NOT_READY` and reason `ERROR`.
+
 ## 1.5.1 - 2026-10-20
 
 - Bump the `Quonfig.Sdk` dependency from `1.8.0` to `1.8.1`. `Quonfig.Sdk`

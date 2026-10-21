@@ -103,12 +103,41 @@ other Quonfig OpenFeature providers).
 
 The provider emits:
 
-- `PROVIDER_READY` after a successful `InitializeAsync`
-- `PROVIDER_ERROR` if initialization fails
+- `PROVIDER_READY` after a successful `InitializeAsync`, and later when a client
+  that started without config heals
+- `PROVIDER_ERROR` if initialization fails, or (non-fatal) when it continued
+  without config
 - `PROVIDER_CONFIGURATION_CHANGED` on every post-ready config refresh (SSE, fallback
   poll, or datadir watcher)
 
-`PROVIDER_STALE` is deferred to a follow-up release.
+`Quonfig.Sdk` keeps no config cache on servers, so the provider never reports
+`STALE`.
+
+## Init failure
+
+When Quonfig delivery is unreachable at startup, the wrapped client retries for
+`InitTimeout` (10 s by default) and then applies `OnInitFailure`. Set both on the
+provider options:
+
+```csharp
+var provider = new QuonfigProvider(new QuonfigProviderOptions
+{
+    SdkKey = "qf_sk_production_...",
+    OnInitFailure = OnInitFailure.Fail, // the default; or Wait / Continue
+    InitTimeout = TimeSpan.FromSeconds(10),
+});
+```
+
+| `OnInitFailure` | `InitializeAsync` | Provider status | When delivery comes back |
+|---|---|---|---|
+| `Fail` (default) | Throws `QuonfigInitException` | `ERROR` | `PROVIDER_READY`, status `READY` |
+| `Wait` | Blocks until the first config | `NOT_READY` (evaluations short-circuit to the default with `PROVIDER_NOT_READY`) | `InitializeAsync` returns, status `READY` |
+| `Continue` | Returns, then emits a non-fatal `PROVIDER_ERROR` | `ERROR` | `PROVIDER_READY`, status `READY` |
+
+In every mode the provider keeps the client alive, so it keeps retrying and heals.
+Until it does, evaluations return your default with error type
+`PROVIDER_NOT_READY` and reason `ERROR`. Under `Wait`, `SetProviderAsync` holds
+until config arrives (or its `CancellationToken` fires).
 
 ## Native SDK escape hatch
 
