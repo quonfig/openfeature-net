@@ -1,7 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 - 2026-10-23
 
+Requires `Quonfig.Sdk` 1.10.0 (size caps, `callback_errors_total`). This release
+bumps the `Quonfig.Sdk` dependency from `1.8.1` through `1.9.0` to `1.10.0` and
+maps its init-failure modes onto provider status. The provider's own API gains
+two options and is otherwise unchanged.
+
+- **Changed: bump `Quonfig.Sdk` to `1.10.0` (size caps, `callback_errors_total`).**
+  From `Quonfig.Sdk` 1.10.0: an SSE event over 4 MiB or a `/api/v2/configs` body
+  over 16 MiB is refused as a failed stream attempt or fetch instead of read into
+  memory (qfg-6vno.20.6), and a throw from an `OnConfigChange` or
+  `OnConnectionStateChange` handler is logged at Error (was Warning) and counted
+  in the internal `quonfig_sdk_callback_errors_total` counter (qfg-6vno.21). Real
+  workspaces are far below the caps. See the `Quonfig.Sdk` 1.10.0 CHANGELOG.
 - **Changed: bump `Quonfig.Sdk` from `1.8.1` to `1.9.0` and map its init-failure
   modes onto provider status (qfg-9p4i.12).** Spec:
   `project/plans/2026-10-05-init-failure-design.md` B.5. **UPGRADE: when
