@@ -2,7 +2,7 @@
 
   <PropertyGroup Label="Versioning">
     <!-- Single source of truth; the release workflow asserts the git tag matches this. -->
-    <Version>1.5.1</Version>
+    <Version>1.6.0</Version>
   </PropertyGroup>
 
   <PropertyGroup Label="LanguageAndNullability">
