@@ -99,7 +99,7 @@ jobs:
         # policy targets. One policy covers all packages owned by `quonfig`.
         # The OIDC step output is `NUGET_API_KEY` (not `nuget-api-key`).
         # See https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget-login
         with:
           user: jeff-quonfig
