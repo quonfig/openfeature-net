@@ -1,5 +1,67 @@
 # Changelog
 
+## 2.0.0 - 2026-10-27
+
+**BREAKING / UPGRADE (major, qfg-zvyy.8).** Requires `Quonfig.Sdk` 2.0.0 (was
+1.10.0), the cross-SDK typed-getter contract. The provider passes the SDK's
+`Get*Details` results through, so provider users inherit the contract below.
+One provider fix rides along (object resolution order, see Changed).
+
+### UPGRADE to 2.0
+
+A value the resolver cannot read as its type returns your default with reason
+`ERROR` and error type `TYPE_MISMATCH`. Strings are never coerced, and the only
+number conversions are exact ones. What changes for provider users:
+
+- **`GetStringValueAsync` on a `duration` config returns your default with
+  `TYPE_MISMATCH`.** 1.x returned the ISO 8601 text (for example `PT30S`).
+  Durations have no OpenFeature read path now: read them with
+  `provider.GetClient()?.GetDuration(key)`. `GetDoubleValueAsync` on a duration
+  already returned your default.
+- **`GetDoubleValueAsync` on an int config returns the value** (`30` ->
+  `30.0`). 1.x returned your default.
+- **`GetIntegerValueAsync` on a double config returns the value when it is
+  whole and within +/-(2^53-1)** (`3.0` -> `3`). 1.x returned your default. A
+  fractional, unsafe or huge double (`3.9`, `2^53`, `1e300`) still returns your
+  default with `TYPE_MISMATCH`; it is never truncated.
+- **A malformed stored int or double (for example `"twelve"`) returns your
+  default with `TYPE_MISMATCH`.** 1.x loaded it as `0`, so every read silently
+  got `0`.
+- **A malformed ENV_VAR value returns your default with `TYPE_MISMATCH`.** 1.x
+  reported `GENERAL`. An unset ENV_VAR and a decryption failure still report
+  `GENERAL`.
+- **One warning per key.** `Quonfig.Sdk` now logs one `Warning` per key per
+  client when a read returns your default because of a type mismatch, a
+  malformed value, an unset ENV_VAR or a decryption failure. The line names the
+  key and the types, never the value. A type mismatch was silent before.
+- Unchanged, and now pinned by tests: a stored `"true"`/`"false"` read as a
+  boolean, `"3"` read as a number, an int or bool read as a string, an int read
+  as a boolean, and a string or bool read as an object all return your default
+  with `TYPE_MISMATCH`.
+- If you call the native client through `GetClient()`, see the `Quonfig.Sdk`
+  2.0.0 CHANGELOG "UPGRADE to 2.0": with no `defaultValue` under
+  `OnNoDefault.Throw`, a wrong-type read now throws the new
+  `QuonfigTypeMismatchException`.
+
+### Changed
+
+- **Object resolution reads `json` first, then `string_list`.** 1.x read
+  `string_list` first and fell back to `json`. Under `Quonfig.Sdk` 2.0 that
+  first probe logged a spurious type-mismatch warning for every valid `json`
+  object read. The results are unchanged. A `string_list` read through
+  `GetObjectValueAsync` still logs one warning per key for the `json` probe,
+  since the SDK has no public way to learn a config's type without a typed
+  read.
+
+### Tests
+
+- New `TypedGetterContractTests` (30 tests) drive the real provider through the
+  OpenFeature client against the integration-test-data `getter.contract.*`
+  fixtures. 8 fail on `Quonfig.Sdk` 1.10.0; on 2.0.0 one fails until the
+  object-resolution fix above. All pass on 2.0.0 with the fix.
+- CI and Release pin integration-test-data `v2026.10.26` (was `v2026.05.20`),
+  which carries the `getter.contract.*` fixtures.
+
 ## 1.6.0 - 2026-10-23
 
 Requires `Quonfig.Sdk` 1.10.0 (size caps, `callback_errors_total`). This release

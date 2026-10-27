@@ -194,7 +194,14 @@ public sealed class QuonfigProvider : FeatureProvider
     }
 
     /// <inheritdoc/>
-    /// <remarks>Resolves <c>string_list</c> first (as a list of strings), then falls back to a parsed <c>json</c> value.</remarks>
+    /// <remarks>
+    /// Resolves a <c>json</c> config (as a parsed value) first, then a <c>string_list</c> (as a list of
+    /// strings). The string-list read runs only when the json read reports a type mismatch: since
+    /// <c>Quonfig.Sdk</c> 2.0 every type-mismatch read logs a warning once per key, so probing a type
+    /// the config cannot have would log a spurious warning for a valid read. Json goes first because it
+    /// is the common structure type; a <c>string_list</c> read through here still logs one warning per
+    /// key (the SDK has no public way to learn a config's type without a typed read).
+    /// </remarks>
     public override Task<ResolutionDetails<Value>> ResolveStructureValueAsync(
         string flagKey, Value defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
     {
@@ -205,6 +212,15 @@ public sealed class QuonfigProvider : FeatureProvider
         }
 
         var ctx = MapContext(context);
+
+        var jsonDetails = client.GetJsonDetails(flagKey, ctx);
+        if (jsonDetails.ErrorCode != ErrorCode.TypeMismatch)
+        {
+            // Resolved, no rule matched, or an error that a second typed read would only repeat
+            // (flag not found, unset ENV_VAR, decryption failure).
+            var value = HasError(jsonDetails) || jsonDetails.Value is null ? defaultValue : Mappings.ToValue(jsonDetails.Value);
+            return Task.FromResult(Build(flagKey, value, jsonDetails));
+        }
 
         var listDetails = client.GetStringListDetails(flagKey, ctx);
         if (!HasError(listDetails) && listDetails.Value is not null)
@@ -218,13 +234,7 @@ public sealed class QuonfigProvider : FeatureProvider
             return Task.FromResult(Build(flagKey, new Value(items), listDetails));
         }
 
-        var jsonDetails = client.GetJsonDetails(flagKey, ctx);
-        if (!HasError(jsonDetails) && jsonDetails.Value is not null)
-        {
-            return Task.FromResult(Build(flagKey, Mappings.ToValue(jsonDetails.Value), jsonDetails));
-        }
-
-        return Task.FromResult(Build(flagKey, defaultValue, jsonDetails));
+        return Task.FromResult(Build(flagKey, defaultValue, listDetails));
     }
 
     private ContextSet? MapContext(EvaluationContext? context) =>

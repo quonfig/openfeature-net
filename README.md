@@ -94,6 +94,30 @@ Errors never throw — they return the caller's default with an `ErrorType` set:
 `General` → `GENERAL`. A missing flag surfaces with reason `DEFAULT` (matching the
 other Quonfig OpenFeature providers).
 
+## Typed reads
+
+Each resolver reads only its own config type (the cross-SDK typed-getter
+contract in `Quonfig.Sdk` 2.0). A value of another type returns your default
+with reason `ERROR` and error type `TYPE_MISMATCH`, and `Quonfig.Sdk` logs one
+warning per key (naming the key, never the value).
+
+| Resolver | Reads |
+|---|---|
+| `GetBooleanValueAsync` | `bool` |
+| `GetStringValueAsync` | `string`, `log_level` |
+| `GetIntegerValueAsync` | `int`, and a `double` that is whole and within +/-(2^53-1) |
+| `GetDoubleValueAsync` | `double`, `int` |
+| `GetObjectValueAsync` | `json`, `string_list` (as a list of strings) |
+
+Strings are never coerced: a stored `"true"` is not a boolean and `"3"` is not
+a number. A fractional double read as an integer returns your default; it is
+never truncated. A malformed stored or ENV_VAR value (for example an int
+`"twelve"`) is also `TYPE_MISMATCH`. An unset ENV_VAR or a decryption failure
+is `GENERAL`.
+
+`duration` configs have no OpenFeature read path: every resolver returns your
+default with `TYPE_MISMATCH`. Read them natively (see below).
+
 > Note: a flag whose only rule is an unconditional match (`ALWAYS_TRUE`) resolves
 > with reason `STATIC` (the canonical reason semantics `Quonfig.Sdk` adopted in
 > 0.0.2, consistent with the other Quonfig SDKs). The provider passes the SDK's
