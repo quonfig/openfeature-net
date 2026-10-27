@@ -28,7 +28,7 @@ jobs:
           # the tests walk up from the test source dir to find it.
           repository: quonfig/integration-test-data
           path: integration-test-data
-          ref: v2026.05.20
+          ref: v2026.10.26
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v4
