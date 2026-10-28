@@ -230,6 +230,64 @@ public sealed class QuonfigProviderTests
         detail.FlagMetadata!.GetInt("weightedValueIndex").Should().Be(0);
     }
 
+    // ---- integration-test-data tests/openfeature/openfeature.yaml, Case 6 (qfg-9xsl) ----
+    // A value that has the requested type but cannot be parsed is PARSE_ERROR (a data problem);
+    // a read with the method for another type is TYPE_MISMATCH (a caller problem).
+
+    [Fact]
+    public async Task Case6_MalformedStoredInt_ViaInteger_ReturnsDefault_ParseError()
+    {
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveIntegerValueAsync("getter.contract.int.malformed", 7);
+
+        AssertError(detail, 7, ErrorType.ParseError);
+    }
+
+    [Fact]
+    public async Task Case6_MalformedStoredDouble_ViaDouble_ReturnsDefault_ParseError()
+    {
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveDoubleValueAsync("getter.contract.double.malformed", 1.5);
+
+        AssertError(detail, 1.5, ErrorType.ParseError);
+    }
+
+    [Fact]
+    public async Task Case6_EnvVarProvidedMalformedInt_ViaInteger_ReturnsDefault_ParseError()
+    {
+        System.Environment.SetEnvironmentVariable("QUONFIG_ITD_GETTER_INT", "twelve");
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveIntegerValueAsync("getter.contract.provided.int.malformed", 7);
+
+        AssertError(detail, 7, ErrorType.ParseError);
+    }
+
+    [Fact]
+    public async Task Case6_IntConfig_ViaBoolean_ReturnsDefault_TypeMismatch()
+    {
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveBooleanValueAsync("getter.contract.int", false);
+
+        AssertError(detail, false, ErrorType.TypeMismatch);
+    }
+
+    // Case 2, malformed stored duration: the provider returns the default with PARSE_ERROR.
+    [Fact]
+    public async Task Case2_MalformedStoredDuration_ViaString_ReturnsDefault_ParseError()
+    {
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveStringValueAsync("test.duration.malformed.30s", "PT0S");
+
+        AssertError(detail, "PT0S", ErrorType.ParseError);
+    }
+
+    private static void AssertError<T>(ResolutionDetails<T> detail, T fallback, ErrorType errorType)
+    {
+        detail.Value.Should().Be(fallback);
+        detail.Reason.Should().Be(Reason.Error);
+        detail.ErrorType.Should().Be(errorType);
+    }
+
     // ---- Mapping unit tests (deterministic; cover every arm including SPLIT/ERROR) ----
 
     [Fact]

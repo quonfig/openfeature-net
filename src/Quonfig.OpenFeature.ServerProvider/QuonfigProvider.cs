@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using OpenFeature;
 using OpenFeature.Model;
 using Quonfig.Sdk;
+using Quonfig.Sdk.Exceptions;
 using OFConst = OpenFeature.Constant;
 using QuonfigClient = Quonfig.Sdk.Quonfig;
 
@@ -158,9 +159,12 @@ public sealed class QuonfigProvider : FeatureProvider
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
 
-        var details = client.GetStringDetails(flagKey, MapContext(context), defaultValue);
+        var ctx = MapContext(context);
+        var details = client.GetStringDetails(flagKey, ctx, defaultValue);
         var value = HasError(details) || details.Value is null ? defaultValue : details.Value;
-        return Task.FromResult(Build(flagKey, value, details));
+        // A string read of a duration config is TYPE_MISMATCH, unless the stored duration is malformed:
+        // then it is PARSE_ERROR, as integration-test-data openfeature.yaml Case 2 specifies (qfg-9xsl).
+        return Task.FromResult(Build(flagKey, value, details, IsMalformed(details, () => client.GetDuration(flagKey, ctx))));
     }
 
     /// <inheritdoc/>
@@ -173,9 +177,10 @@ public sealed class QuonfigProvider : FeatureProvider
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
 
-        var details = client.GetIntDetails(flagKey, MapContext(context), defaultValue);
+        var ctx = MapContext(context);
+        var details = client.GetIntDetails(flagKey, ctx, defaultValue);
         var value = HasError(details) || details.Value is null ? defaultValue : details.Value.Value;
-        return Task.FromResult(Build(flagKey, value, details));
+        return Task.FromResult(Build(flagKey, value, details, IsMalformed(details, () => client.GetInt(flagKey, ctx))));
     }
 
     /// <inheritdoc/>
@@ -188,9 +193,10 @@ public sealed class QuonfigProvider : FeatureProvider
             return Task.FromResult(NotReady(flagKey, defaultValue));
         }
 
-        var details = client.GetDoubleDetails(flagKey, MapContext(context), defaultValue);
+        var ctx = MapContext(context);
+        var details = client.GetDoubleDetails(flagKey, ctx, defaultValue);
         var value = HasError(details) || details.Value is null ? defaultValue : details.Value.Value;
-        return Task.FromResult(Build(flagKey, value, details));
+        return Task.FromResult(Build(flagKey, value, details, IsMalformed(details, () => client.GetDouble(flagKey, ctx))));
     }
 
     /// <inheritdoc/>
@@ -242,11 +248,50 @@ public sealed class QuonfigProvider : FeatureProvider
 
     private static bool HasError<T>(EvaluationDetails<T> details) => details.ErrorCode is not null;
 
-    private static ResolutionDetails<T> Build<T, TQuonfig>(string flagKey, T value, EvaluationDetails<TQuonfig> details) =>
+    /// <summary>
+    /// True when a typed read that reported <see cref="ErrorCode.TypeMismatch"/> failed because the value
+    /// has the type <paramref name="plainRead"/> reads but does not parse (a stored int <c>"twelve"</c>, an
+    /// ENV_VAR int set to <c>"twelve"</c>, a stored duration <c>"30s"</c>), so the provider reports
+    /// PARSE_ERROR instead of TYPE_MISMATCH (qfg-9xsl).
+    /// </summary>
+    /// <remarks>
+    /// <c>Quonfig.Sdk</c> 2.0 reports both failures as <see cref="ErrorCode.TypeMismatch"/> on its
+    /// <c>Get*Details</c> getters. Its plain typed getters, called with no default under
+    /// <see cref="OnNoDefault.Throw"/> (the default policy), raise a distinct exception for each:
+    /// <see cref="QuonfigCoercionException"/> for an unparseable value and
+    /// <see cref="QuonfigTypeMismatchException"/> for a value of another type. This re-read, made only on
+    /// the type-mismatch path, uses that typed signal rather than the error-message text. It logs nothing
+    /// new: the SDK warns once per key and the details read already did. Under any other
+    /// <see cref="OnNoDefault"/> policy the plain getter does not throw and the result stays TYPE_MISMATCH.
+    /// </remarks>
+    private static bool IsMalformed<T>(EvaluationDetails<T> details, Action plainRead)
+    {
+        if (details.ErrorCode != ErrorCode.TypeMismatch)
+        {
+            return false;
+        }
+
+        try
+        {
+            plainRead();
+        }
+        catch (QuonfigCoercionException)
+        {
+            return true;
+        }
+        catch (QuonfigException)
+        {
+            // A value of another type (or the config changed between the two reads).
+        }
+
+        return false;
+    }
+
+    private static ResolutionDetails<T> Build<T, TQuonfig>(string flagKey, T value, EvaluationDetails<TQuonfig> details, bool malformed = false) =>
         new(
             flagKey,
             value,
-            Mappings.ErrorTypeFor(details.ErrorCode),
+            malformed ? OFConst.ErrorType.ParseError : Mappings.ErrorTypeFor(details.ErrorCode),
             Mappings.ReasonFor(details.Reason, details.ErrorCode),
             details.Variant,
             details.ErrorMessage,

@@ -90,7 +90,8 @@ flag metadata onto OpenFeature's `ResolutionDetails`. The reason mapping is 1:1:
 | (anything else)    | `UNKNOWN`          |
 
 Errors never throw — they return the caller's default with an `ErrorType` set:
-`FlagNotFound` → `FLAG_NOT_FOUND`, `TypeMismatch` → `TYPE_MISMATCH`,
+`FlagNotFound` → `FLAG_NOT_FOUND`, `TypeMismatch` → `TYPE_MISMATCH` (or
+`PARSE_ERROR` for a malformed value, see [Typed reads](#typed-reads)),
 `General` → `GENERAL`. A missing flag surfaces with reason `DEFAULT` (matching the
 other Quonfig OpenFeature providers).
 
@@ -111,12 +112,20 @@ warning per key (naming the key, never the value).
 
 Strings are never coerced: a stored `"true"` is not a boolean and `"3"` is not
 a number. A fractional double read as an integer returns your default; it is
-never truncated. A malformed stored or ENV_VAR value (for example an int
-`"twelve"`) is also `TYPE_MISMATCH`. An unset ENV_VAR or a decryption failure
-is `GENERAL`.
+never truncated.
+
+A value that has the requested type but does not parse returns your default
+with reason `ERROR` and error type `PARSE_ERROR`: a stored int `"twelve"` or
+double `"abc"`, or an int or double ENV_VAR set to `"twelve"`. That is a data
+problem; reading a config with the resolver for another type is
+`TYPE_MISMATCH`. An unset ENV_VAR or a decryption failure is `GENERAL`.
+`PARSE_ERROR` relies on the client's default `OnNoDefault.Throw` policy; under
+`Warn` or `Ignore` a malformed value reports `TYPE_MISMATCH`.
 
 `duration` configs have no OpenFeature read path: every resolver returns your
-default with `TYPE_MISMATCH`. Read them natively (see below).
+default with `TYPE_MISMATCH`, except that `GetStringValueAsync` on a malformed
+stored duration (for example `"30s"`) reports `PARSE_ERROR`. Read durations
+natively (see below).
 
 > Note: a flag whose only rule is an unconditional match (`ALWAYS_TRUE`) resolves
 > with reason `STATIC` (the canonical reason semantics `Quonfig.Sdk` adopted in
