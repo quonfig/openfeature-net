@@ -23,8 +23,9 @@ namespace Quonfig.OpenFeature.ServerProvider.Tests;
 /// The rule: a flag read with the method for another type returns the caller's default with reason
 /// ERROR and error type TYPE_MISMATCH. Strings are never coerced (a stored "false" is not a bool,
 /// "3" is not a number). Numbers convert only when exact: an int config reads as a double, and a
-/// double config reads as an int only when it is whole and within +/-(2^53-1). A malformed stored or
-/// ENV_VAR value is a TYPE_MISMATCH too; an unset ENV_VAR is GENERAL.
+/// double config reads as an int only when it is whole and within +/-(2^53-1). A value of the requested
+/// type that does not parse (a malformed stored or ENV_VAR int or double) is PARSE_ERROR (qfg-9xsl); an
+/// unset ENV_VAR is GENERAL.
 /// </remarks>
 public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContractTests.Fixture>
 {
@@ -169,20 +170,20 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
     // ---- Malformed values and resolution errors return the default ----
 
     [Fact]
-    public async Task Integer_OnMalformedStoredInt_ReturnsDefault() =>
-        AssertTypeMismatch(await _client.GetIntegerDetailsAsync("getter.contract.int.malformed", 12), 12);
+    public async Task Integer_OnMalformedStoredInt_ReturnsDefault_ParseError() =>
+        AssertParseError(await _client.GetIntegerDetailsAsync("getter.contract.int.malformed", 12), 12);
 
     [Fact]
-    public async Task Double_OnMalformedStoredDouble_ReturnsDefault() =>
-        AssertTypeMismatch(await _client.GetDoubleDetailsAsync("getter.contract.double.malformed", 1.5), 1.5);
+    public async Task Double_OnMalformedStoredDouble_ReturnsDefault_ParseError() =>
+        AssertParseError(await _client.GetDoubleDetailsAsync("getter.contract.double.malformed", 1.5), 1.5);
 
     [Fact]
-    public async Task Integer_OnMalformedEnvVar_ReturnsDefault_TypeMismatch() =>
-        AssertTypeMismatch(await _client.GetIntegerDetailsAsync("getter.contract.provided.int.malformed", 4), 4);
+    public async Task Integer_OnMalformedEnvVar_ReturnsDefault_ParseError() =>
+        AssertParseError(await _client.GetIntegerDetailsAsync("getter.contract.provided.int.malformed", 4), 4);
 
     [Fact]
-    public async Task Double_OnMalformedEnvVar_ReturnsDefault_TypeMismatch() =>
-        AssertTypeMismatch(await _client.GetDoubleDetailsAsync("getter.contract.provided.double.malformed", 2.5), 2.5);
+    public async Task Double_OnMalformedEnvVar_ReturnsDefault_ParseError() =>
+        AssertParseError(await _client.GetDoubleDetailsAsync("getter.contract.provided.double.malformed", 2.5), 2.5);
 
     [Fact]
     public async Task Boolean_OnUnsetEnvVar_ReturnsDefault_General()
@@ -220,7 +221,28 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
         await provider.ShutdownAsync();
     }
 
+    [Fact]
+    public async Task MalformedRead_LogsOneWarningPerKey()
+    {
+        // The PARSE_ERROR re-read must not add a warning: the SDK warns once per key.
+        var (client, logger, provider) = await NewLoggingClientAsync();
+        for (var i = 0; i < 3; i++)
+        {
+            await client.GetIntegerValueAsync("getter.contract.int.malformed", 1);
+        }
+
+        logger.Warnings.Should().ContainSingle(w => w.Contains("getter.contract.int.malformed", StringComparison.Ordinal));
+        await provider.ShutdownAsync();
+    }
+
     // ---- Helpers ----
+
+    private static void AssertParseError<T>(FlagEvaluationDetails<T> details, T fallback)
+    {
+        details.Value.Should().Be(fallback);
+        details.Reason.Should().Be(Reason.Error);
+        details.ErrorType.Should().Be(ErrorType.ParseError);
+    }
 
     private static void AssertTypeMismatch<T>(FlagEvaluationDetails<T> details, T fallback)
     {

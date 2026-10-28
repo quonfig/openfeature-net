@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.0 - 2026-10-28
+
+### Changed
+
+- **A malformed value now reports `PARSE_ERROR` instead of `TYPE_MISMATCH`**
+  (qfg-9xsl, integration-test-data `tests/openfeature/openfeature.yaml` Case 6).
+  A value that has the requested type but does not parse returns your default
+  with reason `ERROR` and error type `PARSE_ERROR`: a stored int `"twelve"` or
+  double `"abc"` read with `GetIntegerValueAsync` / `GetDoubleValueAsync`, an
+  int or double ENV_VAR set to an unparseable string, and a malformed stored
+  duration (for example `"30s"`) read with `GetStringValueAsync`. A read with
+  the resolver for another type is still `TYPE_MISMATCH`, and a valid duration
+  read as a string still is too.
+- `Quonfig.Sdk` 2.0 reports both failures as `TypeMismatch` on `Get*Details`.
+  The provider tells them apart with one extra read on the type-mismatch path
+  only: the SDK's plain typed getter, called with no default, raises
+  `QuonfigCoercionException` for an unparseable value and
+  `QuonfigTypeMismatchException` for a value of another type. That signal
+  needs the client's default `OnNoDefault.Throw` policy; under `Warn` or
+  `Ignore` a malformed value still reports `TYPE_MISMATCH`. The extra read logs
+  nothing new (the SDK warns once per key).
+
 ## 2.0.0 - 2026-10-27
 
 **BREAKING / UPGRADE (major, qfg-zvyy.8).** Requires `Quonfig.Sdk` 2.0.0 (was
