@@ -295,18 +295,65 @@ public sealed class QuonfigProviderTests
         AssertError(detail, "PT0S", ErrorType.ParseError);
     }
 
-    // A weighted duration read as a string reports SPLIT with the variant and metadata of the evaluation.
+    // A weighted duration read as a string reports SPLIT with the variant of the evaluation. The
+    // config is written to a temp datadir: CI pins an integration-test-data tag that predates
+    // weighted.variant.duration.
     [Fact]
-    public async Task Case2_WeightedDuration_ViaString_ReturnsIsoText_Split()
+    public async Task Duration_PickedBySplit_ViaString_ReturnsIsoText_Split()
     {
-        var provider = NewDatadirProvider();
-        var ctx = EvaluationContext.Builder().Set("user.tracking_id", new Value("abc")).Build();
-        var detail = await provider.ResolveStringValueAsync("weighted.variant.duration", "PT0S", ctx);
+        var dir = Path.Combine(Path.GetTempPath(), "of-net-duration-" + System.Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "configs"));
+        File.WriteAllText(Path.Combine(dir, "quonfig.json"), "{\"environments\": [\"Production\"]}");
+        File.WriteAllText(Path.Combine(dir, "configs", "of.duration.weighted.json"), """
+            {
+              "id": "19000000000000002",
+              "projectId": "124",
+              "key": "of.duration.weighted",
+              "type": "config",
+              "valueType": "duration",
+              "sendToClientSdk": false,
+              "default": {
+                "rules": [
+                  {
+                    "criteria": [{ "operator": "ALWAYS_TRUE" }],
+                    "value": {
+                      "type": "weighted_values",
+                      "value": {
+                        "weightedValues": [
+                          { "weight": 100000, "value": { "type": "duration", "value": "PT90S" } }
+                        ],
+                        "hashByPropertyName": "user.tracking_id"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+            """);
+        try
+        {
+            var provider = new QuonfigProvider(new QuonfigProviderOptions
+            {
+                Datadir = dir,
+                Environment = "Production",
+                ConfigureClient = o => o.CollectEvaluationSummaries = false,
+            });
+            await provider.InitializeAsync(EvaluationContext.Empty);
 
-        detail.Value.Should().Be("PT90S");
-        detail.Reason.Should().Be(Reason.Split);
-        detail.ErrorType.Should().Be(ErrorType.None);
-        detail.Variant.Should().NotBeNullOrEmpty();
+            var ctx = EvaluationContext.Builder().Set("user.tracking_id", new Value("abc")).Build();
+            var detail = await provider.ResolveStringValueAsync("of.duration.weighted", "PT0S", ctx);
+
+            detail.Value.Should().Be("PT90S");
+            detail.Reason.Should().Be(Reason.Split);
+            detail.ErrorType.Should().Be(ErrorType.None);
+            detail.Variant.Should().NotBeNullOrEmpty();
+
+            await provider.ShutdownAsync();
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     // A duration picked by a targeting rule reports TARGETING_MATCH; the catch-all rule reports what the SDK reports.
