@@ -105,7 +105,7 @@ warning per key (naming the key, never the value).
 | Resolver | Reads |
 |---|---|
 | `GetBooleanValueAsync` | `bool` |
-| `GetStringValueAsync` | `string`, `log_level` |
+| `GetStringValueAsync` | `string`, `log_level`, `duration` (as its ISO 8601 text) |
 | `GetIntegerValueAsync` | `int`, and a `double` that is whole and within +/-(2^53-1) |
 | `GetDoubleValueAsync` | `double`, `int` |
 | `GetObjectValueAsync` | `json`, `string_list` (as a list of strings) |
@@ -122,10 +122,14 @@ problem; reading a config with the resolver for another type is
 `PARSE_ERROR` relies on the client's default `OnNoDefault.Throw` policy; under
 `Warn` or `Ignore` a malformed value reports `TYPE_MISMATCH`.
 
-`duration` configs have no OpenFeature read path: every resolver returns your
-default with `TYPE_MISMATCH`, except that `GetStringValueAsync` on a malformed
-stored duration (for example `"30s"`) reports `PARSE_ERROR`. Read durations
-natively (see below).
+`GetStringValueAsync` on a `duration` config returns its ISO 8601 text exactly
+as stored (`"PT90S"`, `"P1DT6H2M1.5S"`), with reason `STATIC`, or
+`TARGETING_MATCH` / `SPLIT` when a rule picks it, plus the variant and metadata.
+A malformed stored or ENV_VAR duration (for example `"30s"`) returns your
+default with `PARSE_ERROR`. Every other resolver on a duration config is
+`TYPE_MISMATCH`. For a parsed `TimeSpan`, read the native client (see below).
+This needs `Quonfig.Sdk` 2.1.0 or later; a custom `IQuonfig` that does not
+implement `IQuonfigDetailsReader` returns your default with `TYPE_MISMATCH`.
 
 > Note: a flag whose only rule is an unconditional match (`ALWAYS_TRUE`) resolves
 > with reason `STATIC` (the canonical reason semantics `Quonfig.Sdk` adopted in
@@ -193,7 +197,7 @@ TimeSpan? ttl = native?.GetDuration("cache.ttl");
 | `string_list` | `GetObjectValueAsync`   | Returns a `Value` list         |
 | `json`        | `GetObjectValueAsync`   | Returns a parsed `Value`       |
 | `long`        | N/A                     | Use the native client          |
-| `duration`    | `GetStringValueAsync`   | ISO 8601 string (`"PT1M30S"`)  |
+| `duration`    | `GetStringValueAsync`   | Stored ISO 8601 text (`"PT1M30S"`) |
 | `log_level`   | N/A                     | Native SDK only                |
 
 `GetObjectValueAsync` resolves `string_list` first, then falls back to a parsed

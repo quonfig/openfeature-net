@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.2.0 - 2026-10-29
+
+### Fixed
+
+- **`GetStringValueAsync` on a `duration` config returns its stored ISO 8601
+  text again** (qfg-177f, integration-test-data
+  `tests/openfeature/openfeature.yaml` Case 2): reason `STATIC`, or
+  `TARGETING_MATCH` / `SPLIT` when a rule picks it, with the variant and
+  metadata, as in 1.x, openfeature-go and the shared OpenFeature cases. 2.0 and
+  2.1 returned your default with `TYPE_MISMATCH`. The text is returned exactly
+  as stored (`"PT90S"` stays `"PT90S"`). A malformed stored or ENV_VAR duration
+  (for example `"30s"`) still returns your default with `PARSE_ERROR`, and
+  `GetIntegerValueAsync` / `GetDoubleValueAsync` / `GetObjectValueAsync` on a
+  duration are still `TYPE_MISMATCH`. Reading a duration as a string no longer
+  logs a type-mismatch warning.
+
+### Changed
+
+- Requires `Quonfig.Sdk` 2.1.0 (was 2.0.0). String resolution reads through its
+  new `IQuonfigDetailsReader.EvaluateDetails`, so a string or duration config is
+  evaluated and counted in telemetry once per resolution. A custom `IQuonfig`
+  passed to the provider that does not implement `IQuonfigDetailsReader` keeps
+  the 2.1 behavior (a duration read as a string is `TYPE_MISMATCH`).
+
 ## 2.1.0 - 2026-10-28
 
 ### Changed

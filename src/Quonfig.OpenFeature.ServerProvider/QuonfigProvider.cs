@@ -64,8 +64,9 @@ public sealed class QuonfigProvider : FeatureProvider
     public override Metadata GetMetadata() => new(ProviderName);
 
     /// <summary>
-    /// The underlying Quonfig client for native-only features (duration / long / bytes values,
-    /// log levels, raw key access). <c>null</c> until <see cref="InitializeAsync"/> has run. After a failed
+    /// The underlying Quonfig client for native-only features (parsed <see cref="TimeSpan"/> durations,
+    /// long / bytes values, log levels, raw key access). A duration's ISO 8601 text is also readable
+    /// through <see cref="ResolveStringValueAsync"/>. <c>null</c> until <see cref="InitializeAsync"/> has run. After a failed
     /// initialization it is the kept client, still retrying in the background.
     /// </summary>
     public IQuonfig? GetClient() => _client;
