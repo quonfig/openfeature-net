@@ -271,6 +271,20 @@ public sealed class QuonfigProviderTests
         AssertError(detail, false, ErrorType.TypeMismatch);
     }
 
+    // Case 2: a duration read as a string returns its stored ISO 8601 text unchanged (qfg-177f).
+    [Theory]
+    [InlineData("test.duration.PT90S", "PT90S")]
+    [InlineData("test.duration.P1DT6H2M1.5S", "P1DT6H2M1.5S")]
+    public async Task Case2_Duration_ViaString_ReturnsStoredIsoText(string key, string expected)
+    {
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveStringValueAsync(key, "PT0S");
+
+        detail.Value.Should().Be(expected);
+        detail.Reason.Should().Be(Reason.Static);
+        detail.ErrorType.Should().Be(ErrorType.None);
+    }
+
     // Case 2, malformed stored duration: the provider returns the default with PARSE_ERROR.
     [Fact]
     public async Task Case2_MalformedStoredDuration_ViaString_ReturnsDefault_ParseError()
@@ -279,6 +293,307 @@ public sealed class QuonfigProviderTests
         var detail = await provider.ResolveStringValueAsync("test.duration.malformed.30s", "PT0S");
 
         AssertError(detail, "PT0S", ErrorType.ParseError);
+    }
+
+    // A weighted duration read as a string reports SPLIT with the variant of the evaluation. The
+    // config is written to a temp datadir: CI pins an integration-test-data tag that predates
+    // weighted.variant.duration.
+    [Fact]
+    public async Task Duration_PickedBySplit_ViaString_ReturnsIsoText_Split()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "of-net-duration-" + System.Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "configs"));
+        File.WriteAllText(Path.Combine(dir, "quonfig.json"), "{\"environments\": [\"Production\"]}");
+        File.WriteAllText(Path.Combine(dir, "configs", "of.duration.weighted.json"), """
+            {
+              "id": "19000000000000002",
+              "projectId": "124",
+              "key": "of.duration.weighted",
+              "type": "config",
+              "valueType": "duration",
+              "sendToClientSdk": false,
+              "default": {
+                "rules": [
+                  {
+                    "criteria": [{ "operator": "ALWAYS_TRUE" }],
+                    "value": {
+                      "type": "weighted_values",
+                      "value": {
+                        "weightedValues": [
+                          { "weight": 100000, "value": { "type": "duration", "value": "PT90S" } }
+                        ],
+                        "hashByPropertyName": "user.tracking_id"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+            """);
+        try
+        {
+            var provider = new QuonfigProvider(new QuonfigProviderOptions
+            {
+                Datadir = dir,
+                Environment = "Production",
+                ConfigureClient = o => o.CollectEvaluationSummaries = false,
+            });
+            await provider.InitializeAsync(EvaluationContext.Empty);
+
+            var ctx = EvaluationContext.Builder().Set("user.tracking_id", new Value("abc")).Build();
+            var detail = await provider.ResolveStringValueAsync("of.duration.weighted", "PT0S", ctx);
+
+            detail.Value.Should().Be("PT90S");
+            detail.Reason.Should().Be(Reason.Split);
+            detail.ErrorType.Should().Be(ErrorType.None);
+            detail.Variant.Should().NotBeNullOrEmpty();
+
+            await provider.ShutdownAsync();
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // A duration picked by a targeting rule reports TARGETING_MATCH; the catch-all rule reports what the SDK reports.
+    [Fact]
+    public async Task Duration_PickedByTargetingRule_ViaString_ReturnsIsoText_TargetingMatch()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "of-net-duration-" + System.Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "configs"));
+        File.WriteAllText(Path.Combine(dir, "quonfig.json"), "{\"environments\": [\"Production\"]}");
+        File.WriteAllText(Path.Combine(dir, "configs", "of.duration.targeting.json"), """
+            {
+              "id": "19000000000000001",
+              "projectId": "124",
+              "key": "of.duration.targeting",
+              "type": "config",
+              "valueType": "duration",
+              "sendToClientSdk": false,
+              "default": {
+                "rules": [
+                  {
+                    "criteria": [
+                      {
+                        "propertyName": "user.plan",
+                        "operator": "PROP_IS_ONE_OF",
+                        "valueToMatch": { "type": "string_list", "value": ["pro"] }
+                      }
+                    ],
+                    "value": { "type": "duration", "value": "PT5M" }
+                  },
+                  {
+                    "criteria": [{ "operator": "ALWAYS_TRUE" }],
+                    "value": { "type": "duration", "value": "PT30S" }
+                  }
+                ]
+              }
+            }
+            """);
+        try
+        {
+            var provider = new QuonfigProvider(new QuonfigProviderOptions
+            {
+                Datadir = dir,
+                Environment = "Production",
+                ConfigureClient = o => o.CollectEvaluationSummaries = false,
+            });
+            await provider.InitializeAsync(EvaluationContext.Empty);
+
+            var pro = EvaluationContext.Builder().Set("user.plan", new Value("pro")).Build();
+            var matched = await provider.ResolveStringValueAsync("of.duration.targeting", "PT0S", pro);
+            matched.Value.Should().Be("PT5M");
+            matched.Reason.Should().Be(Reason.TargetingMatch);
+            matched.ErrorType.Should().Be(ErrorType.None);
+
+            var free = EvaluationContext.Builder().Set("user.plan", new Value("free")).Build();
+            var fallback = await provider.ResolveStringValueAsync("of.duration.targeting", "PT0S", free);
+            fallback.Value.Should().Be("PT30S");
+            fallback.ErrorType.Should().Be(ErrorType.None);
+            // The reason and variant are the SDK's, the same as its typed duration read reports.
+            var typed = provider.GetClient()!.GetDurationDetails("of.duration.targeting", ContextMapper.MapContext(free, "user.id"));
+            fallback.Reason.Should().Be(Mappings.ReasonFor(typed.Reason, typed.ErrorCode));
+            fallback.Variant.Should().Be(typed.Variant);
+
+            await provider.ShutdownAsync();
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // An ENV_VAR-provided duration that does not parse is PARSE_ERROR through the string read too.
+    [Fact]
+    public async Task Case2_EnvVarMalformedDuration_ViaString_ReturnsDefault_ParseError()
+    {
+        System.Environment.SetEnvironmentVariable("QUONFIG_ITD_DURATION_30S", "30s");
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveStringValueAsync("provided.duration.malformed.30s", "PT0S");
+
+        AssertError(detail, "PT0S", ErrorType.ParseError);
+    }
+
+    // A client without IQuonfigDetailsReader (a custom IQuonfig) keeps the 2.x behavior: TYPE_MISMATCH.
+    [Fact]
+    public async Task Duration_ViaString_ClientWithoutDetailsReader_ReturnsDefault_TypeMismatch()
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var plain = PlainQuonfig.Wrap(real);
+        plain.Should().NotBeAssignableTo<IQuonfigDetailsReader>();
+
+        var provider = new QuonfigProvider(plain);
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var duration = await provider.ResolveStringValueAsync("test.duration.PT90S", "PT0S");
+        AssertError(duration, "PT0S", ErrorType.TypeMismatch);
+
+        var str = await provider.ResolveStringValueAsync("getter.contract.string", "");
+        str.Value.Should().Be("fast");
+        str.ErrorType.Should().Be(ErrorType.None);
+    }
+
+    // A string or log_level config read as a string is one untyped evaluation, and the result is the
+    // same value, reason, variant and metadata the SDK's typed GetStringDetails reports.
+    [Theory]
+    [InlineData("getter.contract.string")]
+    [InlineData("log-level.prefab.views.index")]
+    public async Task StringRead_OfStringOrLogLevel_OneEvaluation_SameAsGetStringDetails(string key)
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var counting = CountingQuonfig.Wrap(real);
+        var provider = new QuonfigProvider(counting);
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var detail = await provider.ResolveStringValueAsync(key, "fallback");
+
+        var spy = (CountingQuonfig)(object)counting;
+        spy.EvaluateDetailsCalls.Should().Be(1);
+        spy.TypedCalls.Should().BeEmpty();
+
+        var typed = real.GetStringDetails(key, null, "fallback");
+        typed.ErrorCode.Should().BeNull();
+        detail.Value.Should().Be(typed.Value);
+        detail.Reason.Should().Be(Mappings.ReasonFor(typed.Reason, typed.ErrorCode));
+        detail.Variant.Should().Be(typed.Variant);
+        detail.ErrorType.Should().Be(ErrorType.None);
+        AssertSameMetadata(detail.FlagMetadata!, typed.Metadata);
+    }
+
+    // A config of another type still reports TYPE_MISMATCH through the typed read.
+    [Fact]
+    public async Task StringRead_OfIntConfig_FallsThroughToTypedRead_TypeMismatch()
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var counting = CountingQuonfig.Wrap(real);
+        var provider = new QuonfigProvider(counting);
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var detail = await provider.ResolveStringValueAsync("getter.contract.int", "fallback");
+
+        AssertError(detail, "fallback", ErrorType.TypeMismatch);
+        var spy = (CountingQuonfig)(object)counting;
+        spy.EvaluateDetailsCalls.Should().Be(1);
+        spy.TypedCalls.Should().Contain(nameof(IQuonfig.GetStringDetails));
+    }
+
+    private static void AssertSameMetadata(ImmutableMetadata actual, System.Collections.Generic.IReadOnlyDictionary<string, object?> expected)
+    {
+        var nonNull = expected.Where(kv => kv.Value is not null).ToList();
+        nonNull.Should().NotBeEmpty();
+        actual.Count.Should().Be(nonNull.Count);
+        foreach (var kv in nonNull)
+        {
+            actual.GetString(kv.Key).Should().Be((string)kv.Value!, "metadata key {0}", kv.Key);
+        }
+    }
+
+    /// <summary>An <see cref="IQuonfig"/> + <see cref="IQuonfigDetailsReader"/> that forwards to a real
+    /// client and records which reads the provider made.</summary>
+    public class CountingQuonfig : System.Reflection.DispatchProxy, IQuonfigDetailsReader
+    {
+        private QuonfigClient _inner = null!;
+
+        public int EvaluateDetailsCalls { get; private set; }
+
+        public System.Collections.Generic.List<string> TypedCalls { get; } = new();
+
+        public static IQuonfig Wrap(QuonfigClient inner)
+        {
+            var proxy = Create<IQuonfig, CountingQuonfig>();
+            ((CountingQuonfig)(object)proxy)._inner = inner;
+            return proxy;
+        }
+
+        public EvaluationDetails<object?> EvaluateDetails(string key, ContextSet? contexts = null)
+        {
+            EvaluateDetailsCalls++;
+            return _inner.EvaluateDetails(key, contexts);
+        }
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name.StartsWith("Get", System.StringComparison.Ordinal))
+            {
+                TypedCalls.Add(targetMethod.Name);
+            }
+
+            try
+            {
+                return targetMethod.Invoke(_inner, args);
+            }
+            catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
+    }
+
+    /// <summary>An <see cref="IQuonfig"/> that forwards to a real client but does not implement
+    /// <see cref="IQuonfigDetailsReader"/>, standing in for a custom implementation.</summary>
+    public class PlainQuonfig : System.Reflection.DispatchProxy
+    {
+        private IQuonfig _inner = null!;
+
+        public static IQuonfig Wrap(IQuonfig inner)
+        {
+            var proxy = Create<IQuonfig, PlainQuonfig>();
+            ((PlainQuonfig)(object)proxy)._inner = inner;
+            return proxy;
+        }
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            try
+            {
+                return targetMethod!.Invoke(_inner, args);
+            }
+            catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
     }
 
     private static void AssertError<T>(ResolutionDetails<T> detail, T fallback, ErrorType errorType)
