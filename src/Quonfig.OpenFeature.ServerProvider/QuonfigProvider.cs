@@ -28,6 +28,10 @@ public sealed class QuonfigProvider : FeatureProvider
 {
     private const string ProviderName = "quonfig";
 
+    /// <summary>Wire names of the stored value types, as <see cref="EvaluationDetails{T}.ValueType"/> reports them.</summary>
+    private const string DurationValueType = "duration";
+    private const string StringValueType = "string";
+
     /// <summary>Delay before the non-fatal PROVIDER_ERROR under OnInitFailure.Continue (see <see cref="WatchForHeal"/>).</summary>
     private static readonly TimeSpan ContinueErrorDelay = TimeSpan.FromMilliseconds(100);
 
@@ -160,11 +164,69 @@ public sealed class QuonfigProvider : FeatureProvider
         }
 
         var ctx = MapContext(context);
+        if (client is IQuonfigDetailsReader reader)
+        {
+            var raw = reader.EvaluateDetails(flagKey, ctx);
+            if (raw.ValueType == DurationValueType)
+            {
+                return Task.FromResult(DurationAsString(client, flagKey, defaultValue, ctx, raw));
+            }
+
+            // A missing key, or a string config: the untyped read is the whole answer, so the config
+            // is evaluated (and counted in telemetry) once.
+            if (raw.ValueType is null || (raw.ValueType == StringValueType && (HasError(raw) || raw.Value is null or string)))
+            {
+                var resolved = HasError(raw) || raw.Value is not string s ? defaultValue : s;
+                return Task.FromResult(Build(flagKey, resolved, raw));
+            }
+
+            // Any other type: the typed read below reports the type mismatch. It returns before the
+            // SDK records an evaluation, so the untyped read above stays the only one counted.
+        }
+
         var details = client.GetStringDetails(flagKey, ctx, defaultValue);
         var value = HasError(details) || details.Value is null ? defaultValue : details.Value;
-        // A string read of a duration config is TYPE_MISMATCH, unless the stored duration is malformed:
-        // then it is PARSE_ERROR, as integration-test-data openfeature.yaml Case 2 specifies (qfg-9xsl).
+        // Without IQuonfigDetailsReader (a custom IQuonfig) a duration config is TYPE_MISMATCH, unless
+        // the stored duration is malformed: then it is PARSE_ERROR (qfg-9xsl).
         return Task.FromResult(Build(flagKey, value, details, IsMalformed(details, () => client.GetDuration(flagKey, ctx))));
+    }
+
+    /// <summary>
+    /// A string read of a <c>duration</c> config returns its ISO 8601 text exactly as stored, with the
+    /// evaluation's reason, variant and metadata (integration-test-data openfeature.yaml Case 2,
+    /// qfg-177f), matching openfeature-go's <c>stringOf</c>. A stored value that is not a valid
+    /// duration (for example <c>"30s"</c>) or a malformed ENV_VAR value is PARSE_ERROR.
+    /// </summary>
+    private static ResolutionDetails<string> DurationAsString(
+        IQuonfig client, string flagKey, string defaultValue, ContextSet? ctx, EvaluationDetails<object?> raw)
+    {
+        if (HasError(raw))
+        {
+            // An ENV_VAR value that does not parse comes back as TypeMismatch; the plain duration
+            // getter confirms it is a parse failure (see IsMalformed). An unset ENV_VAR stays GENERAL.
+            return Build(flagKey, defaultValue, raw, IsMalformed(raw, () => client.GetDuration(flagKey, ctx)));
+        }
+
+        if (raw.Value is not string text)
+        {
+            // No rule matched: the default with the SDK's reason.
+            return Build(flagKey, defaultValue, raw);
+        }
+
+        if (IsoDurationText.IsValid(text))
+        {
+            return Build(flagKey, text, raw);
+        }
+
+        // EvaluateDetails returns a malformed stored duration as stored, with a success reason.
+        return new ResolutionDetails<string>(
+            flagKey,
+            defaultValue,
+            OFConst.ErrorType.ParseError,
+            OFConst.Reason.Error,
+            raw.Variant,
+            $"config \"{flagKey}\" has a malformed duration value",
+            Mappings.ToFlagMetadata(raw.Metadata));
     }
 
     /// <inheritdoc/>

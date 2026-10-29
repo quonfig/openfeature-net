@@ -309,7 +309,7 @@ public sealed class QuonfigProviderTests
         detail.Variant.Should().NotBeNullOrEmpty();
     }
 
-    // A duration picked by a targeting rule reports TARGETING_MATCH; the fallback rule reports STATIC.
+    // A duration picked by a targeting rule reports TARGETING_MATCH; the catch-all rule reports what the SDK reports.
     [Fact]
     public async Task Duration_PickedByTargetingRule_ViaString_ReturnsIsoText_TargetingMatch()
     {
@@ -363,7 +363,11 @@ public sealed class QuonfigProviderTests
             var free = EvaluationContext.Builder().Set("user.plan", new Value("free")).Build();
             var fallback = await provider.ResolveStringValueAsync("of.duration.targeting", "PT0S", free);
             fallback.Value.Should().Be("PT30S");
-            fallback.Reason.Should().Be(Reason.Static);
+            fallback.ErrorType.Should().Be(ErrorType.None);
+            // The reason and variant are the SDK's, the same as its typed duration read reports.
+            var typed = provider.GetClient()!.GetDurationDetails("of.duration.targeting", ContextMapper.MapContext(free, "user.id"));
+            fallback.Reason.Should().Be(Mappings.ReasonFor(typed.Reason, typed.ErrorCode));
+            fallback.Variant.Should().Be(typed.Variant);
 
             await provider.ShutdownAsync();
         }
