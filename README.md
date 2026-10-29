@@ -119,8 +119,11 @@ with reason `ERROR` and error type `PARSE_ERROR`: a stored int `"twelve"` or
 double `"abc"`, or an int or double ENV_VAR set to `"twelve"`. That is a data
 problem; reading a config with the resolver for another type is
 `TYPE_MISMATCH`. An unset ENV_VAR or a decryption failure is `GENERAL`.
-`PARSE_ERROR` relies on the client's default `OnNoDefault.Throw` policy; under
-`Warn` or `Ignore` a malformed value reports `TYPE_MISMATCH`.
+With `Quonfig.Sdk` 2.1, `PARSE_ERROR` relies on the client's default
+`OnNoDefault.Throw` policy; under `Warn` or `Ignore` a malformed value reports
+`TYPE_MISMATCH`. A `Quonfig.Sdk` release that reports its own `ParseError`
+code needs neither: the provider passes that code straight through as
+`PARSE_ERROR`.
 
 `GetStringValueAsync` on a `duration` config returns its ISO 8601 text exactly
 as stored (`"PT90S"`, `"P1DT6H2M1.5S"`), with reason `STATIC`, or
@@ -200,5 +203,6 @@ TimeSpan? ttl = native?.GetDuration("cache.ttl");
 | `duration`    | `GetStringValueAsync`   | Stored ISO 8601 text (`"PT1M30S"`) |
 | `log_level`   | N/A                     | Native SDK only                |
 
-`GetObjectValueAsync` resolves `string_list` first, then falls back to a parsed
-`json` value.
+`GetObjectValueAsync` reads the config once and returns a `json` config as a
+parsed `Value` or a `string_list` as a `Value` list, without logging a
+type-mismatch warning for either.
