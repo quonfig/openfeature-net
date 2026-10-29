@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using OpenFeature.Model;
 using Quonfig.Sdk;
@@ -40,15 +41,41 @@ internal static class Mappings
         };
     }
 
+    /// <summary>The name of the SDK's parse-failure <see cref="ErrorCode"/> member (qfg-wg1n).</summary>
+    private const string ParseErrorName = "ParseError";
+
+    /// <summary>
+    /// The ordinal Quonfig.Sdk gives <c>ParseError</c>: it is appended after <see cref="ErrorCode.General"/>
+    /// so the existing members keep their values.
+    /// </summary>
+    private const int ParseErrorOrdinal = 3;
+
     /// <summary>Maps a Quonfig <see cref="ErrorCode"/> to an OpenFeature <see cref="OFConst.ErrorType"/>.</summary>
+    /// <remarks>
+    /// The SDK's <c>ParseError</c> code (a value of the requested type that does not parse, qfg-wg1n) maps
+    /// to <c>PARSE_ERROR</c>. This provider builds against <c>Quonfig.Sdk</c> 2.1, which has no such member,
+    /// so the code is matched by name at run time (see <see cref="IsParseError"/>) and the provider works
+    /// with both 2.1 and later SDKs. Any other code it does not know stays <c>GENERAL</c>.
+    /// </remarks>
     public static OFConst.ErrorType ErrorTypeFor(ErrorCode? errorCode) => errorCode switch
     {
         null => OFConst.ErrorType.None,
         ErrorCode.FlagNotFound => OFConst.ErrorType.FlagNotFound,
         ErrorCode.TypeMismatch => OFConst.ErrorType.TypeMismatch,
         ErrorCode.General => OFConst.ErrorType.General,
+        { } code when IsParseError(code) => OFConst.ErrorType.ParseError,
         _ => OFConst.ErrorType.General,
     };
+
+    /// <summary>
+    /// True when <paramref name="code"/> is the SDK's <c>ParseError</c>: the member of that name in the
+    /// loaded <c>Quonfig.Sdk</c>, or, when the loaded SDK names no member at that value, the ordinal
+    /// the SDK reserves for it.
+    /// </summary>
+    internal static bool IsParseError(ErrorCode code) =>
+        Enum.IsDefined(typeof(ErrorCode), code)
+            ? string.Equals(Enum.GetName(typeof(ErrorCode), code), ParseErrorName, StringComparison.Ordinal)
+            : (int)code == ParseErrorOrdinal;
 
     /// <summary>Copies the SDK's flag metadata into an OpenFeature <see cref="ImmutableMetadata"/>, dropping null values.</summary>
     public static ImmutableMetadata ToFlagMetadata(IReadOnlyDictionary<string, object?> metadata)

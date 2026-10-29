@@ -516,6 +516,55 @@ public sealed class QuonfigProviderTests
         spy.TypedCalls.Should().Contain(nameof(IQuonfig.GetStringDetails));
     }
 
+    // qfg-tzby: a json or string_list config read as an object is one untyped evaluation, with the
+    // same value, reason, variant and metadata as the SDK's typed details read for its type.
+    [Theory]
+    [InlineData("getter.contract.json")]
+    [InlineData("getter.contract.string_list")]
+    public async Task StructureRead_OfJsonOrStringList_OneEvaluation_NoTypedProbe(string key)
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var counting = CountingQuonfig.Wrap(real);
+        var provider = new QuonfigProvider(counting);
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var detail = await provider.ResolveStructureValueAsync(key, new Value("fallback"));
+
+        var spy = (CountingQuonfig)(object)counting;
+        spy.EvaluateDetailsCalls.Should().Be(1);
+        spy.TypedCalls.Should().BeEmpty();
+        detail.ErrorType.Should().Be(ErrorType.None);
+        detail.Reason.Should().Be(Reason.Static);
+        detail.Variant.Should().Be("static");
+        (detail.Value.IsStructure || detail.Value.IsList).Should().BeTrue();
+    }
+
+    // Any other type still reports TYPE_MISMATCH through the typed reads.
+    [Fact]
+    public async Task StructureRead_OfIntConfig_FallsThroughToTypedRead_TypeMismatch()
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var provider = new QuonfigProvider(CountingQuonfig.Wrap(real));
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var fallback = new Value("fallback");
+        var detail = await provider.ResolveStructureValueAsync("getter.contract.int", fallback);
+
+        AssertError(detail, fallback, ErrorType.TypeMismatch);
+    }
+
     private static void AssertSameMetadata(ImmutableMetadata actual, System.Collections.Generic.IReadOnlyDictionary<string, object?> expected)
     {
         var nonNull = expected.Where(kv => kv.Value is not null).ToList();

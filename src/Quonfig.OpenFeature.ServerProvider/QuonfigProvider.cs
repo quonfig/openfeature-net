@@ -32,6 +32,8 @@ public sealed class QuonfigProvider : FeatureProvider
     private const string DurationValueType = "duration";
     private const string StringValueType = "string";
     private const string LogLevelValueType = "log_level";
+    private const string JsonValueType = "json";
+    private const string StringListValueType = "string_list";
 
     /// <summary>Delay before the non-fatal PROVIDER_ERROR under OnInitFailure.Continue (see <see cref="WatchForHeal"/>).</summary>
     private static readonly TimeSpan ContinueErrorDelay = TimeSpan.FromMilliseconds(100);
@@ -267,12 +269,13 @@ public sealed class QuonfigProvider : FeatureProvider
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Resolves a <c>json</c> config (as a parsed value) first, then a <c>string_list</c> (as a list of
-    /// strings). The string-list read runs only when the json read reports a type mismatch: since
-    /// <c>Quonfig.Sdk</c> 2.0 every type-mismatch read logs a warning once per key, so probing a type
-    /// the config cannot have would log a spurious warning for a valid read. Json goes first because it
-    /// is the common structure type; a <c>string_list</c> read through here still logs one warning per
-    /// key (the SDK has no public way to learn a config's type without a typed read).
+    /// Resolves a <c>json</c> config (as a parsed value) or a <c>string_list</c> (as a list of strings).
+    /// With the SDK client this is one untyped <see cref="IQuonfigDetailsReader.EvaluateDetails"/> read,
+    /// which names the config's stored type, so a valid read of either type is evaluated once and logs
+    /// no type-mismatch warning (qfg-tzby). For any other type, and for a custom <see cref="IQuonfig"/>
+    /// without <see cref="IQuonfigDetailsReader"/>, the provider reads json first, then string_list only
+    /// when the json read reports a type mismatch: since <c>Quonfig.Sdk</c> 2.0 every type-mismatch read
+    /// logs a warning once per key.
     /// </remarks>
     public override Task<ResolutionDetails<Value>> ResolveStructureValueAsync(
         string flagKey, Value defaultValue, EvaluationContext? context = null, CancellationToken cancellationToken = default)
@@ -284,6 +287,21 @@ public sealed class QuonfigProvider : FeatureProvider
         }
 
         var ctx = MapContext(context);
+        if (client is IQuonfigDetailsReader reader)
+        {
+            var raw = reader.EvaluateDetails(flagKey, ctx);
+
+            // A missing key, or a json or string_list config: the untyped read is the whole answer
+            // (json as the tree GetJson returns, string_list as a list of strings).
+            if (raw.ValueType is null || raw.ValueType == JsonValueType || raw.ValueType == StringListValueType)
+            {
+                var resolved = HasError(raw) || raw.Value is null ? defaultValue : Mappings.ToValue(raw.Value);
+                return Task.FromResult(Build(flagKey, resolved, raw));
+            }
+
+            // Any other type: the typed reads below report the type mismatch. They return before the
+            // SDK records an evaluation, so the untyped read above stays the only one counted.
+        }
 
         var jsonDetails = client.GetJsonDetails(flagKey, ctx);
         if (jsonDetails.ErrorCode != ErrorCode.TypeMismatch)

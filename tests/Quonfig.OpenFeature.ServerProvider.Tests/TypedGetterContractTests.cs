@@ -241,6 +241,20 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
     }
 
     [Fact]
+    public async Task StructureRead_OfStringListConfig_LogsNoWarning()
+    {
+        // qfg-tzby: a string_list read as an object is a valid read; the provider must not probe it
+        // with a json read that logs the SDK's type-mismatch warning.
+        var (client, logger, provider) = await NewLoggingClientAsync();
+        var details = await client.GetObjectDetailsAsync("getter.contract.string_list", new Value("d"));
+
+        details.ErrorType.Should().Be(ErrorType.None);
+        details.Value.AsList!.Select(v => v.AsString).Should().Equal("a", "b");
+        logger.Warnings.Should().BeEmpty();
+        await provider.ShutdownAsync();
+    }
+
+    [Fact]
     public async Task StringRead_OfDurationConfig_LogsNoWarning()
     {
         // Reading a duration as a string is a valid read (qfg-177f): no type-mismatch warning.

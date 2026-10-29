@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.3.0 - 2026-10-29
+
+### Added
+
+- **An SDK `ParseError` code passes straight through as `PARSE_ERROR`**
+  (qfg-wg1n). When `Quonfig.Sdk` reports a malformed value (a stored int
+  `"twelve"`, an unparseable ENV_VAR, a malformed stored duration) with its own
+  `ParseError` error code, the provider returns your default with reason
+  `ERROR` and error type `PARSE_ERROR` directly, with no extra read, and so
+  under every `OnNoDefault` policy. `Quonfig.Sdk` 2.1 has no such code yet:
+  with it the provider keeps the 2.1.0 behavior (the re-read that tells a
+  malformed value from a value of another type). The code is matched by name
+  at run time, so this release still requires only `Quonfig.Sdk` 2.1.0. Any
+  other error code the provider does not know is still `GENERAL`.
+
+### Fixed
+
+- **`GetObjectValueAsync` on a `string_list` config no longer logs a
+  type-mismatch warning** (qfg-tzby). The provider reads the config once
+  through `IQuonfigDetailsReader.EvaluateDetails`, which names its stored type,
+  and returns a `json` config as a parsed `Value` or a `string_list` as a list
+  of strings, so neither probes the other type and each is counted once in
+  telemetry. Other config types are still `TYPE_MISMATCH`. A custom `IQuonfig`
+  that does not implement `IQuonfigDetailsReader` keeps the json-then-string_list
+  reads.
+
 ## 2.2.0 - 2026-10-29
 
 ### Fixed
