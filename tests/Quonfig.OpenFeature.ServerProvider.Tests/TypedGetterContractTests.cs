@@ -79,9 +79,14 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
         AssertTypeMismatch(await _client.GetIntegerDetailsAsync("getter.contract.double.huge", 7), 7);
 
     [Fact]
-    public async Task String_OnDuration_ReturnsDefault_NotIsoText() =>
-        // Durations have no OpenFeature read path: use provider.GetClient().GetDuration(key).
-        AssertTypeMismatch(await _client.GetStringDetailsAsync("getter.contract.duration", "fallback"), "fallback");
+    public async Task String_OnDuration_ReturnsStoredIsoText()
+    {
+        // A duration reads as a string as its stored ISO 8601 text (openfeature.yaml Case 2, qfg-177f).
+        var details = await _client.GetStringDetailsAsync("getter.contract.duration", "fallback");
+        details.Value.Should().Be("PT30S");
+        details.Reason.Should().Be(Reason.Static);
+        details.ErrorType.Should().Be(ErrorType.None);
+    }
 
     [Fact]
     public async Task Double_OnDuration_ReturnsDefault() =>

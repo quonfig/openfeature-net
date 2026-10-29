@@ -271,6 +271,20 @@ public sealed class QuonfigProviderTests
         AssertError(detail, false, ErrorType.TypeMismatch);
     }
 
+    // Case 2: a duration read as a string returns its stored ISO 8601 text unchanged (qfg-177f).
+    [Theory]
+    [InlineData("test.duration.PT90S", "PT90S")]
+    [InlineData("test.duration.P1DT6H2M1.5S", "P1DT6H2M1.5S")]
+    public async Task Case2_Duration_ViaString_ReturnsStoredIsoText(string key, string expected)
+    {
+        var provider = NewDatadirProvider();
+        var detail = await provider.ResolveStringValueAsync(key, "PT0S");
+
+        detail.Value.Should().Be(expected);
+        detail.Reason.Should().Be(Reason.Static);
+        detail.ErrorType.Should().Be(ErrorType.None);
+    }
+
     // Case 2, malformed stored duration: the provider returns the default with PARSE_ERROR.
     [Fact]
     public async Task Case2_MalformedStoredDuration_ViaString_ReturnsDefault_ParseError()
