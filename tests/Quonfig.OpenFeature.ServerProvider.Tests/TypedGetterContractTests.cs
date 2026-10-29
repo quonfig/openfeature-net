@@ -93,6 +93,20 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
         AssertTypeMismatch(await _client.GetDoubleDetailsAsync("getter.contract.duration", 5.0), 5.0);
 
     [Fact]
+    public async Task Integer_OnDuration_ReturnsDefault() =>
+        AssertTypeMismatch(await _client.GetIntegerDetailsAsync("getter.contract.duration", 5), 5);
+
+    [Fact]
+    public async Task Structure_OnDuration_ReturnsDefault()
+    {
+        var fallback = new Value("d");
+        var details = await _client.GetObjectDetailsAsync("getter.contract.duration", fallback);
+        details.Value.Should().BeSameAs(fallback);
+        details.Reason.Should().Be(Reason.Error);
+        details.ErrorType.Should().Be(ErrorType.TypeMismatch);
+    }
+
+    [Fact]
     public async Task Structure_OnStoredString_ReturnsDefault()
     {
         var fallback = new Value("d");
@@ -222,6 +236,18 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
         var details = await client.GetObjectDetailsAsync("getter.contract.json", new Value("d"));
 
         details.ErrorType.Should().Be(ErrorType.None);
+        logger.Warnings.Should().BeEmpty();
+        await provider.ShutdownAsync();
+    }
+
+    [Fact]
+    public async Task StringRead_OfDurationConfig_LogsNoWarning()
+    {
+        // Reading a duration as a string is a valid read (qfg-177f): no type-mismatch warning.
+        var (client, logger, provider) = await NewLoggingClientAsync();
+        var details = await client.GetStringDetailsAsync("getter.contract.duration", "fallback");
+
+        details.Value.Should().Be("PT30S");
         logger.Warnings.Should().BeEmpty();
         await provider.ShutdownAsync();
     }
