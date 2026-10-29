@@ -31,6 +31,7 @@ public sealed class QuonfigProvider : FeatureProvider
     /// <summary>Wire names of the stored value types, as <see cref="EvaluationDetails{T}.ValueType"/> reports them.</summary>
     private const string DurationValueType = "duration";
     private const string StringValueType = "string";
+    private const string LogLevelValueType = "log_level";
 
     /// <summary>Delay before the non-fatal PROVIDER_ERROR under OnInitFailure.Continue (see <see cref="WatchForHeal"/>).</summary>
     private static readonly TimeSpan ContinueErrorDelay = TimeSpan.FromMilliseconds(100);
@@ -173,9 +174,11 @@ public sealed class QuonfigProvider : FeatureProvider
                 return Task.FromResult(DurationAsString(client, flagKey, defaultValue, ctx, raw));
             }
 
-            // A missing key, or a string config: the untyped read is the whole answer, so the config
-            // is evaluated (and counted in telemetry) once.
-            if (raw.ValueType is null || (raw.ValueType == StringValueType && (HasError(raw) || raw.Value is null or string)))
+            // A missing key, or a string or log_level config (both read as strings): the untyped read
+            // is the whole answer, so the config is evaluated (and counted in telemetry) once.
+            if (raw.ValueType is null
+                || ((raw.ValueType == StringValueType || raw.ValueType == LogLevelValueType)
+                    && (HasError(raw) || raw.Value is null or string)))
             {
                 var resolved = HasError(raw) || raw.Value is not string s ? defaultValue : s;
                 return Task.FromResult(Build(flagKey, resolved, raw));

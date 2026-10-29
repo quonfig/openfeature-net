@@ -460,6 +460,115 @@ public sealed class QuonfigProviderTests
         str.ErrorType.Should().Be(ErrorType.None);
     }
 
+    // A string or log_level config read as a string is one untyped evaluation, and the result is the
+    // same value, reason, variant and metadata the SDK's typed GetStringDetails reports.
+    [Theory]
+    [InlineData("getter.contract.string")]
+    [InlineData("log-level.prefab.views.index")]
+    public async Task StringRead_OfStringOrLogLevel_OneEvaluation_SameAsGetStringDetails(string key)
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var counting = CountingQuonfig.Wrap(real);
+        var provider = new QuonfigProvider(counting);
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var detail = await provider.ResolveStringValueAsync(key, "fallback");
+
+        var spy = (CountingQuonfig)(object)counting;
+        spy.EvaluateDetailsCalls.Should().Be(1);
+        spy.TypedCalls.Should().BeEmpty();
+
+        var typed = real.GetStringDetails(key, null, "fallback");
+        typed.ErrorCode.Should().BeNull();
+        detail.Value.Should().Be(typed.Value);
+        detail.Reason.Should().Be(Mappings.ReasonFor(typed.Reason, typed.ErrorCode));
+        detail.Variant.Should().Be(typed.Variant);
+        detail.ErrorType.Should().Be(ErrorType.None);
+        AssertSameMetadata(detail.FlagMetadata!, typed.Metadata);
+    }
+
+    // A config of another type still reports TYPE_MISMATCH through the typed read.
+    [Fact]
+    public async Task StringRead_OfIntConfig_FallsThroughToTypedRead_TypeMismatch()
+    {
+        await using var real = new QuonfigClient(new QuonfigOptions
+        {
+            Datadir = IntegrationTestDataDir(),
+            Environment = "Production",
+            CollectEvaluationSummaries = false,
+        });
+        await real.InitAsync();
+        var counting = CountingQuonfig.Wrap(real);
+        var provider = new QuonfigProvider(counting);
+        await provider.InitializeAsync(EvaluationContext.Empty);
+
+        var detail = await provider.ResolveStringValueAsync("getter.contract.int", "fallback");
+
+        AssertError(detail, "fallback", ErrorType.TypeMismatch);
+        var spy = (CountingQuonfig)(object)counting;
+        spy.EvaluateDetailsCalls.Should().Be(1);
+        spy.TypedCalls.Should().Contain(nameof(IQuonfig.GetStringDetails));
+    }
+
+    private static void AssertSameMetadata(ImmutableMetadata actual, System.Collections.Generic.IReadOnlyDictionary<string, object?> expected)
+    {
+        var nonNull = expected.Where(kv => kv.Value is not null).ToList();
+        nonNull.Should().NotBeEmpty();
+        actual.Count.Should().Be(nonNull.Count);
+        foreach (var kv in nonNull)
+        {
+            actual.GetString(kv.Key).Should().Be((string)kv.Value!, "metadata key {0}", kv.Key);
+        }
+    }
+
+    /// <summary>An <see cref="IQuonfig"/> + <see cref="IQuonfigDetailsReader"/> that forwards to a real
+    /// client and records which reads the provider made.</summary>
+    public class CountingQuonfig : System.Reflection.DispatchProxy, IQuonfigDetailsReader
+    {
+        private QuonfigClient _inner = null!;
+
+        public int EvaluateDetailsCalls { get; private set; }
+
+        public System.Collections.Generic.List<string> TypedCalls { get; } = new();
+
+        public static IQuonfig Wrap(QuonfigClient inner)
+        {
+            var proxy = Create<IQuonfig, CountingQuonfig>();
+            ((CountingQuonfig)(object)proxy)._inner = inner;
+            return proxy;
+        }
+
+        public EvaluationDetails<object?> EvaluateDetails(string key, ContextSet? contexts = null)
+        {
+            EvaluateDetailsCalls++;
+            return _inner.EvaluateDetails(key, contexts);
+        }
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name.StartsWith("Get", System.StringComparison.Ordinal))
+            {
+                TypedCalls.Add(targetMethod.Name);
+            }
+
+            try
+            {
+                return targetMethod.Invoke(_inner, args);
+            }
+            catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
+    }
+
     /// <summary>An <see cref="IQuonfig"/> that forwards to a real client but does not implement
     /// <see cref="IQuonfigDetailsReader"/>, standing in for a custom implementation.</summary>
     public class PlainQuonfig : System.Reflection.DispatchProxy

@@ -19,7 +19,7 @@
 ### Changed
 
 - Requires `Quonfig.Sdk` 2.1.0 (was 2.0.0). String resolution reads through its
-  new `IQuonfigDetailsReader.EvaluateDetails`, so a string or duration config is
+  new `IQuonfigDetailsReader.EvaluateDetails`, so a string, log_level or duration config is
   evaluated and counted in telemetry once per resolution. A custom `IQuonfig`
   passed to the provider that does not implement `IQuonfigDetailsReader` keeps
   the 2.1 behavior (a duration read as a string is `TYPE_MISMATCH`).
