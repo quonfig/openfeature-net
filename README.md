@@ -72,7 +72,7 @@ Use `Datadir` instead of `SdkKey` to load config from a local workspace director
 var provider = new QuonfigProvider(new QuonfigProviderOptions
 {
     Datadir = "/path/to/workspace",
-    Environment = "Production",
+    Environment = "production",
 });
 ```
 
