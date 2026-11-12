@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.4.0 - 2026-11-12
+
+Minor release because the `Quonfig.Sdk` floor moved (qfg-ln7d).
+
+### Changed
+
+- **Requires `Quonfig.Sdk` 2.2.0 or later** (was 2.1.0). 2.2.0 is the first
+  release whose details API reports a malformed value with its own
+  `ErrorCode.ParseError`.
+- **`PARSE_ERROR` comes straight from the SDK.** The provider maps
+  `ErrorCode.ParseError` to `PARSE_ERROR` directly and no longer re-reads a
+  `TYPE_MISMATCH` result through the throwing plain getter to tell a malformed
+  value from a value of another type. A malformed stored or ENV_VAR int, double
+  or duration is still `PARSE_ERROR`, now under every `OnNoDefault` policy (the
+  re-read only worked under `OnNoDefault.Throw`). A config of another type is
+  still `TYPE_MISMATCH`. The run-time name match for `ParseError` is gone too.
+- A custom `IQuonfig` is now taken at its word: a `TypeMismatch` it reports is
+  `TYPE_MISMATCH`, with no extra plain-getter read.
+
 ## 2.3.0 - 2026-10-29
 
 ### Added

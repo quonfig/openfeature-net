@@ -119,11 +119,8 @@ with reason `ERROR` and error type `PARSE_ERROR`: a stored int `"twelve"` or
 double `"abc"`, or an int or double ENV_VAR set to `"twelve"`. That is a data
 problem; reading a config with the resolver for another type is
 `TYPE_MISMATCH`. An unset ENV_VAR or a decryption failure is `GENERAL`.
-With `Quonfig.Sdk` 2.1, `PARSE_ERROR` relies on the client's default
-`OnNoDefault.Throw` policy; under `Warn` or `Ignore` a malformed value reports
-`TYPE_MISMATCH`. A `Quonfig.Sdk` release that reports its own `ParseError`
-code needs neither: the provider passes that code straight through as
-`PARSE_ERROR`.
+The provider passes `Quonfig.Sdk`'s own `ParseError` code straight through as
+`PARSE_ERROR`, under every `OnNoDefault` policy.
 
 `GetStringValueAsync` on a `duration` config returns its ISO 8601 text exactly
 as stored (`"PT90S"`, `"P1DT6H2M1.5S"`), with reason `STATIC`, or
@@ -131,7 +128,7 @@ as stored (`"PT90S"`, `"P1DT6H2M1.5S"`), with reason `STATIC`, or
 A malformed stored or ENV_VAR duration (for example `"30s"`) returns your
 default with `PARSE_ERROR`. Every other resolver on a duration config is
 `TYPE_MISMATCH`. For a parsed `TimeSpan`, read the native client (see below).
-This needs `Quonfig.Sdk` 2.1.0 or later; a custom `IQuonfig` that does not
+This needs `Quonfig.Sdk` 2.2.0 or later; a custom `IQuonfig` that does not
 implement `IQuonfigDetailsReader` returns your default with `TYPE_MISMATCH`.
 
 > Note: a flag whose only rule is an unconditional match (`ALWAYS_TRUE`) resolves
