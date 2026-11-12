@@ -6,6 +6,7 @@ using FluentAssertions;
 using OpenFeature.Constant;
 using OpenFeature.Model;
 using Quonfig.Sdk;
+using Quonfig.Sdk.Exceptions;
 using Xunit;
 using Reason = OpenFeature.Constant.Reason;
 
@@ -13,14 +14,13 @@ namespace Quonfig.OpenFeature.ServerProvider.Tests;
 
 /// <summary>
 /// qfg-wg1n: a <c>Quonfig.Sdk</c> details result that carries the SDK's <c>ParseError</c> code maps
-/// straight to OpenFeature <c>PARSE_ERROR</c>, with no provider re-read. The released
-/// <c>Quonfig.Sdk</c> 2.1 has no <c>ParseError</c> member; its next minor appends one after
-/// <c>General</c> (ordinal 3). These tests stub the SDK with that code.
+/// straight to OpenFeature <c>PARSE_ERROR</c>, with no provider re-read (qfg-ln7d removed the
+/// pre-2.2 throwing re-read). These tests stub the SDK with that code.
 /// </summary>
 public sealed class ParseErrorPassthroughTests
 {
-    /// <summary>The SDK's <c>ParseError</c> code, as the next Quonfig.Sdk minor appends it.</summary>
-    private static readonly ErrorCode SdkParseError = (ErrorCode)3;
+    /// <summary>The SDK's <c>ParseError</c> code (Quonfig.Sdk 2.2.0+).</summary>
+    private const ErrorCode SdkParseError = ErrorCode.ParseError;
 
     [Fact]
     public void ErrorTypeFor_SdkParseError_IsParseError() =>
@@ -91,9 +91,32 @@ public sealed class ParseErrorPassthroughTests
         AssertParseError(detail, fallback, stub);
     }
 
-    private static async Task<(QuonfigProvider Provider, ParseErrorQuonfig Stub)> NewProviderAsync(string valueType)
+    [Theory]
+    [InlineData("int")]
+    [InlineData("double")]
+    [InlineData("duration")]
+    public async Task SdkTypeMismatch_StaysTypeMismatch_WithoutReRead(string valueType)
     {
-        var client = ParseErrorQuonfig.Create(valueType);
+        // qfg-ln7d: with Quonfig.Sdk >= 2.2 a malformed value arrives as the SDK's own ParseError, so
+        // the provider no longer re-reads a TypeMismatch through the throwing plain getter to tell the
+        // two apart. A TypeMismatch from the SDK is TYPE_MISMATCH, even when the plain getter would
+        // have thrown QuonfigCoercionException.
+        var (provider, stub) = await NewProviderAsync(valueType, ErrorCode.TypeMismatch);
+        var detail = valueType switch
+        {
+            "int" => (await provider.ResolveIntegerValueAsync("k", 7)).ErrorType,
+            "double" => (await provider.ResolveDoubleValueAsync("k", 1.5)).ErrorType,
+            _ => (await provider.ResolveStringValueAsync("k", "PT0S")).ErrorType,
+        };
+
+        detail.Should().Be(ErrorType.TypeMismatch);
+        stub.PlainCalls.Should().BeEmpty();
+    }
+
+    private static async Task<(QuonfigProvider Provider, ParseErrorQuonfig Stub)> NewProviderAsync(
+        string valueType, ErrorCode? code = null)
+    {
+        var client = ParseErrorQuonfig.Create(valueType, code ?? SdkParseError);
         var provider = new QuonfigProvider(client);
         await provider.InitializeAsync(EvaluationContext.Empty);
         return (provider, (ParseErrorQuonfig)(object)client);
@@ -105,7 +128,7 @@ public sealed class ParseErrorPassthroughTests
         detail.Reason.Should().Be(Reason.Error);
         detail.ErrorType.Should().Be(ErrorType.ParseError);
         detail.ErrorMessage.Should().Be(ParseErrorQuonfig.Message);
-        // A passed-through PARSE_ERROR needs no plain-getter re-read (the 2.1 workaround).
+        // A passed-through PARSE_ERROR needs no plain-getter re-read (the removed pre-2.2 workaround).
         stub.PlainCalls.Should().BeEmpty();
     }
 
@@ -119,17 +142,21 @@ public sealed class ParseErrorPassthroughTests
 
         private string _valueType = null!;
 
+        private ErrorCode _code;
+
         public List<string> PlainCalls { get; } = new();
 
-        public static IQuonfig Create(string valueType)
+        public static IQuonfig Create(string valueType, ErrorCode code)
         {
             var proxy = Create<IQuonfig, ParseErrorQuonfig>();
-            ((ParseErrorQuonfig)(object)proxy)._valueType = valueType;
+            var stub = (ParseErrorQuonfig)(object)proxy;
+            stub._valueType = valueType;
+            stub._code = code;
             return proxy;
         }
 
         public EvaluationDetails<object?> EvaluateDetails(string key, ContextSet? contexts = null) =>
-            new(null, Quonfig.Sdk.Reason.Error, "default", null, SdkParseError, Message, null, _valueType);
+            new(null, Quonfig.Sdk.Reason.Error, "default", null, _code, Message, null, _valueType);
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
@@ -148,7 +175,7 @@ public sealed class ParseErrorPassthroughTests
                     Quonfig.Sdk.Reason.Error,
                     "default",
                     null,
-                    (ErrorCode?)SdkParseError,
+                    (ErrorCode?)_code,
                     Message,
                     null);
             }
@@ -156,7 +183,8 @@ public sealed class ParseErrorPassthroughTests
             if (name.StartsWith("Get", StringComparison.Ordinal))
             {
                 PlainCalls.Add(name);
-                return null;
+                // The plain getter on a malformed value, under OnNoDefault.Throw.
+                throw new QuonfigCoercionException(Message);
             }
 
             if (name.StartsWith("add_", StringComparison.Ordinal) || name.StartsWith("remove_", StringComparison.Ordinal))

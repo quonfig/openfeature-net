@@ -269,7 +269,7 @@ public sealed class TypedGetterContractTests : IClassFixture<TypedGetterContract
     [Fact]
     public async Task MalformedRead_LogsOneWarningPerKey()
     {
-        // The PARSE_ERROR re-read must not add a warning: the SDK warns once per key.
+        // A malformed read warns once per key (the SDK warns; the provider adds nothing).
         var (client, logger, provider) = await NewLoggingClientAsync();
         for (var i = 0; i < 3; i++)
         {
